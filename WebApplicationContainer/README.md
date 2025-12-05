@@ -9,6 +9,30 @@ This project provides a minimal React template with a clean, modern UI and minim
 - Edges created by connecting nodes are optimistically added and persisted via POST /edges.
 - Right-side properties panel allows editing node fields and saves via PATCH /nodes/:id (optimistic with rollback on failure).
 
+### Mock Backend Mode (In-Memory)
+
+For local demos without a real backend, enable the mock in-memory backend:
+
+1) Copy .env.example to .env and set:
+```
+REACT_APP_USE_MOCK_API=true
+REACT_APP_MOCK_ERROR_RATE=0
+REACT_APP_MOCK_DELAY_MS=150
+```
+
+2) Start the app as usual (`npm start`).
+
+When enabled, the app routes API calls to an in-memory store:
+- GET /palette -> seeded items: Router, Switch, Link
+- POST /nodes -> creates nodes in memory (ids like n1, n2…)
+- PATCH /nodes/:id -> updates nodes in memory
+- POST /edges -> creates edges in memory (ids like e1, e2…)
+
+Notes:
+- Data persists for the duration of the browser session (in-memory only).
+- You can adjust REACT_APP_MOCK_ERROR_RATE to simulate random failures.
+- `Backend:` indicator in the palette will show “(mock in-memory API)”.
+
 Environment:
 
 Set REACT_APP_BACKEND_URL in a .env file at build time (or use .env.example):
@@ -17,7 +41,7 @@ Set REACT_APP_BACKEND_URL in a .env file at build time (or use .env.example):
 REACT_APP_BACKEND_URL=https://your-backend.example.com
 ```
 
-If not set or the backend is down, the app continues in local-only mode and shows a non-blocking toast.
+If not set or the backend is down, the app continues in local-only mode and shows a non-blocking toast. Alternatively, enable the mock mode as above for a richer local demo experience.
 
 ## Features
 

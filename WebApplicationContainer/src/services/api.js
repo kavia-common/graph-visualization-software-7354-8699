@@ -1,7 +1,19 @@
-//
-// Service layer for backend calls using REACT_APP_BACKEND_URL.
-// Provides graceful fallback when backend is unavailable (404/Network errors).
-//
+/*
+ * Service layer for backend calls using REACT_APP_BACKEND_URL,
+ * with optional mock in-memory backend toggled by REACT_APP_USE_MOCK_API.
+ */
+
+const USE_MOCK =
+  (typeof process !== 'undefined' &&
+    process.env &&
+    String(process.env.REACT_APP_USE_MOCK_API).toLowerCase() === 'true') ||
+  false;
+
+let mockApi = null;
+if (USE_MOCK) {
+  // Lazy import to avoid bundling cost when not used
+  mockApi = require('./mockApi');
+}
 
 const BASE_URL =
   (typeof process !== 'undefined' && process.env && process.env.REACT_APP_BACKEND_URL) ||
@@ -68,9 +80,12 @@ async function request(path, { method = 'GET', body, headers = {} } = {}) {
 // PUBLIC_INTERFACE
 export async function fetchPalette() {
   /**
-   * Fetch palette from backend. If unavailable, return sensible defaults.
+   * Fetch palette from backend or mock.
    * Returns: [{type, label, icon?}, ...]
    */
+  if (USE_MOCK && mockApi) {
+    return mockApi.getPalette();
+  }
   try {
     const data = await request('/palette');
     if (Array.isArray(data)) return data;
@@ -94,30 +109,40 @@ export async function fetchPalette() {
 // PUBLIC_INTERFACE
 export async function createNode(node) {
   /**
-   * Create node via backend.
+   * Create node via backend or mock.
    * On network error, throw to allow caller to decide on rollback/keep local.
    */
+  if (USE_MOCK && mockApi) {
+    return mockApi.createNode(node);
+  }
   return request('/nodes', { method: 'POST', body: node });
 }
 
 // PUBLIC_INTERFACE
 export async function updateNode(id, patch) {
   /**
-   * Patch node via backend.
+   * Patch node via backend or mock.
    */
+  if (USE_MOCK && mockApi) {
+    return mockApi.updateNode(id, patch);
+  }
   return request(`/nodes/${encodeURIComponent(id)}`, { method: 'PATCH', body: patch });
 }
 
 // PUBLIC_INTERFACE
 export async function createEdge(edge) {
   /**
-   * Create edge via backend.
+   * Create edge via backend or mock.
    */
+  if (USE_MOCK && mockApi) {
+    return mockApi.createEdge(edge);
+  }
   return request('/edges', { method: 'POST', body: edge });
 }
 
 // PUBLIC_INTERFACE
 export function getBaseUrl() {
   /** Utility accessor for base URL for diagnostics. */
+  if (USE_MOCK) return '(mock in-memory API)';
   return BASE_URL || '(local-only mode)';
 }
