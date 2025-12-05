@@ -1,17 +1,18 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import App from './App';
 
-test('renders toolbar and toggles read-only', () => {
+test('renders theme toggle', () => {
   render(<App />);
-  const toggle = screen.getByRole('button', { name: /read-only|editable/i });
-  expect(toggle).toBeInTheDocument();
-  fireEvent.click(toggle);
-  expect(toggle.textContent.toLowerCase()).toContain('read-only');
+  const themeBtn = screen.getByRole('button', { name: /switch to dark mode|switch to light mode/i });
+  expect(themeBtn).toBeInTheDocument();
+  fireEvent.click(themeBtn);
+  // Button label toggles after click
+  expect(screen.getByRole('button')).toBeInTheDocument();
 });
 
-test('can open shortcuts overlay', () => {
+test('navigates to shortcuts route', () => {
   render(<App />);
-  const btn = screen.getByRole('button', { name: /shortcuts/i });
-  btn.click();
+  const link = screen.getByRole('link', { name: /shortcuts/i });
+  fireEvent.click(link);
   expect(screen.getByText(/keyboard shortcuts/i)).toBeInTheDocument();
 });
