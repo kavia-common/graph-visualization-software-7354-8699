@@ -10,10 +10,28 @@ export async function importDesign(file) {
   return migrated;
 }
 
+function triggerBlobDownload(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  try {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('Export failed (non-fatal):', err);
+  } finally {
+    try { URL.revokeObjectURL(url); } catch (_) {}
+  }
+}
+
 // PUBLIC_INTERFACE
 export async function maybeGzip(text) {
   /** Optionally gzip text using CompressionStream if supported by browser. Returns Blob. */
-  if ('CompressionStream' in window) {
+  if (typeof window !== 'undefined' && 'CompressionStream' in window) {
     const cs = new CompressionStream('gzip');
     const writer = cs.writable.getWriter();
     const enc = new TextEncoder();
@@ -22,45 +40,27 @@ export async function maybeGzip(text) {
     const gzBlob = await new Response(cs.readable).blob();
     return gzBlob;
   }
-  return new Blob([text], { type: 'application/json' });
+  return new Blob([text], { type: 'application/json;charset=utf-8' });
 }
 
 // PUBLIC_INTERFACE
 export function exportDesign(data, { gzip = false } = {}) {
-  /** Export current design to a versioned JSON file with deterministic serialization. */
+  /** Export current design to a versioned JSON file with deterministic serialization and Blob download. */
   const meta = { ...(data.meta || {}), v: getCurrentSchemaVersion(), exportedAt: new Date().toISOString() };
   const sorted = {
     ...data,
     meta,
-    nodes: [...(data.nodes || [])].sort((a, b) => a.id.localeCompare(b.id)),
-    edges: [...(data.edges || [])].sort((a, b) => a.id.localeCompare(b.id)),
+    nodes: [...(data.nodes || [])].sort((a, b) => (a.id || '').localeCompare(b.id || '')),
+    edges: [...(data.edges || [])].sort((a, b) => (a.id || '').localeCompare(b.id || '')),
   };
   const json = JSON.stringify(sorted, null, 2);
 
-  const trigger = async () => {
-    // Create a Blob and trigger a download via a temporary anchor element
-    const blob = gzip ? await maybeGzip(json) : new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    try {
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = gzip ? `graph-design-v${meta.v}.json.gz` : `graph-design-v${meta.v}.json`;
-      // Ensure element is attached for some browsers (Playwright download works either way, but safe)
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.warn('Export failed (non-fatal):', err);
-    } finally {
-      // Always revoke URL to prevent leaks, even if click throws
-      try { URL.revokeObjectURL(url); } catch (_) {}
-    }
-  };
-
-  // Fire and forget for user click responsiveness with safe error handling to avoid Jest ERR_UNHANDLED_REJECTION
   Promise.resolve()
-    .then(() => trigger())
+    .then(async () => {
+      const blob = gzip ? await maybeGzip(json) : new Blob([json], { type: 'application/json;charset=utf-8' });
+      const filename = gzip ? `graph-design-v${meta.v}.json.gz` : `graph-design-v${meta.v}.json`;
+      triggerBlobDownload(blob, filename);
+    })
     .catch((err) => {
       // eslint-disable-next-line no-console
       console.warn('Export failed (non-fatal):', err);

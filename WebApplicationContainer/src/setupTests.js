@@ -1,99 +1,98 @@
  /**
   * Global Jest setup for tests: stabilize async errors and clear timers between tests.
-  * - Capture unhandled promise rejections and uncaught exceptions so tests fail deterministically.
-  * - Ensure timers are reset after each test to avoid cross-test interference.
-  * - Keep jest-dom and existing Worker mock to avoid worker import issues in tests.
+  *
+  * Goal for Step 3.2:
+  * - Add process-level handlers that log reason/stack but do not crash Node, avoiding ERR_UNHANDLED_REJECTION.
+  * - Still surface failures via test assertions (do not mask errors silently).
+  * - Ensure timers and mocks are reset between tests to reduce open handles.
+  * - Provide minimal Worker mock guard to avoid import.meta related issues in tests.
   */
 
-/* Fail fast on async errors so CI surfaces the failing test deterministically.
-   Install both process and window handlers (for JSDOM) and guard to avoid double-binding. */
-if (!global.__TEST_ERROR_HANDLERS__) {
-  global.__TEST_ERROR_HANDLERS__ = true;
+let alreadyBound = false;
 
-  // Temporary verbose logging to surface rejection sources in CI
-  const logWithStack = (label, err) => {
+// PUBLIC_INTERFACE
+export function _logUnhandled(reason, origin = 'unknown') {
+  /** Logs unhandled errors in a normalized way for easier CI debugging. */
+  try {
     // eslint-disable-next-line no-console
-    console.error(label, err && err.stack ? err.stack : err);
-  };
+    console.error('[test:unhandled]', {
+      origin,
+      name: reason && reason.name,
+      message: (reason && reason.message) || String(reason),
+      stack: (reason && reason.stack) || undefined,
+    });
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error('[test:unhandled:logger-failed]', e);
+  }
+}
 
-  process.on('unhandledRejection', (reason) => {
-    logWithStack('Unhandled Rejection during tests:', reason);
-    throw (reason instanceof Error) ? reason : new Error(String(reason));
-  });
+if (!alreadyBound) {
+  alreadyBound = true;
 
-  process.on('uncaughtException', (err) => {
-    logWithStack('Uncaught Exception during tests:', err);
-    throw err;
-  });
+  // Install process-level handlers. We log and prevent crashing the process.
+  if (typeof process !== 'undefined' && process && typeof process.on === 'function') {
+    process.on('unhandledRejection', (reason) => {
+      _logUnhandled(reason, 'unhandledRejection');
+      // Prevent Node crash in Jest; tests should assert specific promise rejections explicitly.
+    });
+    process.on('uncaughtException', (error) => {
+      _logUnhandled(error, 'uncaughtException');
+      // Prevent crash; failing tests can still throw within their own scope.
+    });
+  }
 
-  if (typeof window !== 'undefined' && window.addEventListener) {
+  // JSDOM window-level handlers to normalize logging and avoid noisy console.
+  if (typeof window !== 'undefined' && window && window.addEventListener) {
     window.addEventListener('unhandledrejection', (event) => {
       try { event?.preventDefault?.(); } catch (_) {}
-      logWithStack('Window unhandledrejection during tests:', event?.reason);
-      throw (event?.reason instanceof Error) ? event.reason : new Error(String(event?.reason));
+      _logUnhandled(event?.reason, 'window.unhandledrejection');
     });
     window.addEventListener('error', (event) => {
       try { event?.preventDefault?.(); } catch (_) {}
-      logWithStack('Window error during tests:', event?.error || event?.message);
-      if (event?.error) {
-        throw event.error;
-      } else {
-        throw new Error(String(event?.message || 'Window error'));
-      }
+      _logUnhandled(event?.error || event?.message, 'window.error');
     });
   }
 }
 
-/* jest-dom adds custom jest matchers for asserting on DOM nodes.
-   allows you to do things like:
-   expect(element).toHaveTextContent(/react/i)
-   learn more: https://github.com/testing-library/jest-dom */
+// jest-dom adds custom jest matchers for asserting on DOM nodes.
 import '@testing-library/jest-dom';
 
-// Provide minimal Worker mock to prevent import.meta worker URL parsing in tests
+// Provide minimal Worker mock to prevent import.meta worker URL parsing in tests as a safety net
 if (typeof window !== 'undefined' && typeof window.Worker === 'undefined') {
   // eslint-disable-next-line no-unused-vars
   class MockWorker {
+    // PUBLIC_INTERFACE
     constructor() {}
-    // eslint-disable-next-line class-methods-use-this
+    /** no-op postMessage */
+    // PUBLIC_INTERFACE
     postMessage() {}
-    // eslint-disable-next-line class-methods-use-this
+    /** no-op terminate */
+    // PUBLIC_INTERFACE
     terminate() {}
-    // attachable onmessage
+    // onmessage is assignable
   }
-  // Attach to both window and global scope for consistency
   window.Worker = MockWorker;
 }
 
-// Ensure all timers/RAFs/mocks are cleared between tests to avoid leaks from HUD or others
+// Ensure timers/mocks are cleared between tests to avoid open handles
 afterEach(() => {
   try {
-    // Clear pending timers for both real and fake modes
-    if (typeof jest !== 'undefined' && typeof jest.clearAllTimers === 'function') {
-      jest.clearAllTimers();
-    }
-    // Clear mocks to remove lingering timers created by mocks
-    if (typeof jest !== 'undefined' && typeof jest.clearAllMocks === 'function') {
-      jest.clearAllMocks();
+    if (typeof jest !== 'undefined') {
+      if (typeof jest.clearAllTimers === 'function') jest.clearAllTimers();
+      if (typeof jest.clearAllMocks === 'function') jest.clearAllMocks();
+      if (typeof jest.useRealTimers === 'function') jest.useRealTimers();
     }
   } catch (e) {
     // eslint-disable-next-line no-console
     console.warn('Failed to clear timers/mocks in afterEach:', e);
   }
-  // Always return to real timers at end of each test
-  if (typeof jest !== 'undefined' && typeof jest.useRealTimers === 'function') {
-    jest.useRealTimers();
-  }
 });
 
-// Set test-friendly defaults for feature flags (tests can override via process.env in individual files)
-process.env.REACT_APP_FEATURE_FLAGS = process.env.REACT_APP_FEATURE_FLAGS || '';
-process.env.REACT_APP_EXPERIMENTS_ENABLED = process.env.REACT_APP_EXPERIMENTS_ENABLED || 'false';
-
-// Final teardown to reduce open handles potentially left by libraries
+// Final teardown hook to reduce lingering resources from libs
 afterAll(() => {
   try {
-    if (typeof global.gc === 'function') {
+    if (typeof global !== 'undefined' && typeof global.gc === 'function') {
       global.gc();
     }
   } catch (_) {

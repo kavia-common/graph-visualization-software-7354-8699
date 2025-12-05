@@ -45,8 +45,9 @@ export default function Toolbar({
       <span style={{ borderLeft: '1px solid var(--border-color)', height: 20, margin: '0 8px' }} />
       <button data-testid="toolbar-import" className="secondary" onClick={triggerImport} disabled={busy} title="Import JSON">Import</button>
       <input ref={fileInputRef} type="file" accept="application/json" onChange={onFileChange} style={{ display: 'none' }} />
-      <button data-testid="toolbar-export" className="secondary" onClick={() => onExport({ gzip: false })} disabled={busy} title="Export JSON" data-testid="export-json">Export</button>
-      <button data-testid="toolbar-export-gz" className="secondary" onClick={() => onExport({ gzip: true })} disabled={busy} title="Export JSON .gz">Export (.gz)</button>
+      {/* Maintain legacy test id plus new stable id */}
+      <button data-testid="toolbar-export" data-testid-legacy="export-json" className="secondary" onClick={() => onExport({ gzip: false })} disabled={busy} title="Export JSON">Export</button>
+      <button data-testid="toolbar-export-gz" data-testid-legacy="export-gz" className="secondary" onClick={() => onExport({ gzip: true })} disabled={busy} title="Export JSON .gz">Export (.gz)</button>
       <span style={{ borderLeft: '1px solid var(--border-color)', height: 20, margin: '0 8px' }} />
       <button data-testid="toolbar-toggle-readonly" className="secondary" onClick={onToggleReadOnly} disabled={busy} title="Toggle read-only">
         {readOnly ? 'Read-only' : 'Editable'}
