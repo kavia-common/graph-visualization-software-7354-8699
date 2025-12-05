@@ -5,6 +5,7 @@ import { useGraphStore } from '../store/graphStore';
 import { useHistory } from '../store/history';
 import { usePlugins } from '../plugins/registry';
 import { featureEnabled, experiments, counter } from '../perf/metrics';
+import { createModuleWorker } from '../workers/createWorker';
 
 // PUBLIC_INTERFACE
 export default function GraphCanvas({ onContextMenu }) {
@@ -41,17 +42,15 @@ export default function GraphCanvas({ onContextMenu }) {
         process.env &&
         (process.env.NODE_ENV === 'test' || process.env.REACT_APP_NODE_ENV === 'test')) ||
       false;
-    const canUseWorker =
-      typeof Worker !== 'undefined' &&
-      typeof URL !== 'undefined';
 
-    if (isTest || !canUseWorker) return;
+    if (isTest) return;
     if (!experiments() || !featureEnabled('layout-worker')) return;
     if (!nodes?.length) return;
 
     counter('layout_runs', 1);
     try {
-      const worker = new Worker(new URL('../workers/layout.worker.js', import.meta.url), { type: 'module' });
+      const worker = createModuleWorker('../workers/layout.worker.js');
+      if (!worker) return;
       worker.onmessage = (evt) => {
         const { nodes: laidOut } = evt.data || {};
         if (Array.isArray(laidOut)) {

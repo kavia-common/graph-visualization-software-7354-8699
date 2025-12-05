@@ -10,6 +10,7 @@ import { initDB, autosaveDebounced, restoreLatest, manualBackup, manualRestore }
 import { PluginRegistryProvider } from '../plugins/registry';
 import ShortcutsOverlay from '../components/ShortcutsOverlay';
 import { experiments, featureEnabled } from '../perf/metrics';
+import { createModuleWorker } from '../workers/createWorker';
 
 // PUBLIC_INTERFACE
 export default function GraphEditor() {
@@ -46,34 +47,21 @@ export default function GraphEditor() {
     autosaveDebounced({ nodes, edges, meta: { v: 1 } });
   }, [nodes, edges]);
 
-  // Experimental validate worker (guarded to avoid import.meta parsing in Jest)
+  // Experimental validate worker (uses factory to avoid import.meta parsing in Jest)
   useEffect(() => {
-    // Guard execution in tests and ensure required globals/APIs exist before constructing Worker
     const isTest =
       (typeof process !== 'undefined' &&
         process.env &&
         (process.env.NODE_ENV === 'test' || process.env.REACT_APP_NODE_ENV === 'test')) ||
       false;
 
-    // Feature gates and environment guards
-    const canUseWorker =
-      typeof Worker !== 'undefined' &&
-      typeof URL !== 'undefined' &&
-      // access to import.meta must not be parsed in tests; avoid direct reference by try/catch below
-      true;
-
-    if (
-      isTest ||
-      !canUseWorker ||
-      !experiments() ||
-      !featureEnabled('validate-worker')
-    ) {
+    if (isTest || !experiments() || !featureEnabled('validate-worker')) {
       return;
     }
 
     try {
-      // Construct Worker only under runtime guards; this prevents Jest from parsing import.meta in tests
-      const worker = new Worker(new URL('../workers/validate.worker.js', import.meta.url), { type: 'module' });
+      const worker = createModuleWorker('../workers/validate.worker.js');
+      if (!worker) return;
       worker.onmessage = (evt) => {
         const { ok, error } = evt.data || {};
         if (!ok && error) console.warn('Background validation error:', error);
@@ -82,7 +70,7 @@ export default function GraphEditor() {
       worker.postMessage({ schema: 'v1', data: { nodes, edges, meta: { v: 1 } } });
       return () => worker.terminate();
     } catch {
-      // Swallow errors silently to avoid noisy logs in unsupported environments
+      // swallow errors in unsupported environments
     }
   }, [nodes, edges]);
 
