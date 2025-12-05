@@ -3,46 +3,51 @@
 //
 // This module defines which node types can contain which other types,
 // provides helper utilities to validate containment, and exposes clear
-// defaults/overrides for easy future adjustments.
+// helpers to enforce quantity caps for certain children.
 //
-// How to modify rules:
-// - Add or change entries in ALLOWED_CHILDREN to map parentType -> allowed child types.
-// - Update DEVICE_TYPES list if new device types are added that can contain interface/port.
-// - Adjust TOP_LEVEL_TYPES to control which types can be created at the canvas root (parentId = null).
-// - Use TOP_LEVEL_OVERRIDES to allow additional direct placement under the top-level parent (e.g., site can contain room).
+// Exact Matrix and Constraints (per requirements):
+// - Top-level allowed types: ["site"].
+// - Parent → allowed children:
+//   site: [building]
+//   building: [room]
+//   room: [rack]
+//   rack: [rackPosition, slot]
+//   rackPosition: [device]
+//   slot: [device]
+//   device (router, switch): [interface, port]
+//   interface: []
+//   port: []
 //
-// Backward compatibility:
-// - Only types in TOP_LEVEL_TYPES can be created at top-level (parentId = null).
-// - If a parentId is provided, canContain(parentType, childType) must return true.
+// Quantity caps:
+// - rackPosition indices 1..42 within a rack
+// - slot positions 1..16 within a rack
 //
 // PUBLIC INTERFACES are marked with the PUBLIC_INTERFACE comment.
 //
 
-// Device types that are considered "device" for containment purposes.
-export const DEVICE_TYPES = ['router', 'switch', 'generic-device'];
+// Device variants that are considered "device" for containment purposes.
+// PUBLIC_INTERFACE
+export const DEVICE_TYPES = ['router', 'switch'];
 
 // The canonical allowed children mapping: parentType -> array of allowed child types
-// Note: 'rack' can contain either positions (grid cells) or slots (vertical slots).
+// PUBLIC_INTERFACE
 export const ALLOWED_CHILDREN = {
-  site: ['building'], // top-most hierarchy
+  site: ['building'],
   building: ['room'],
   room: ['rack'],
-  rack: ['position', 'slot'],
-  position: ['device'],
+  rack: ['rackPosition', 'slot'],
+  rackPosition: ['device'],
   slot: ['device'],
-  device: ['interface', 'port'], // applies to router/switch/generic-device
-  interface: [], // no children
-  port: [], // no children
+  device: ['interface', 'port'], // applies to router/switch via normalization
+  interface: [],
+  port: [],
 };
 
 // Types allowed to be created at top-level (no parentId provided).
+// PUBLIC_INTERFACE
 export const TOP_LEVEL_TYPES = ['site'];
 
-// Optional overrides for allowing a type directly under the implicit top-level canvas/root.
-// For example, allow 'room' to be created directly under the overall design (without a site).
-export const TOP_LEVEL_OVERRIDES = ['room'];
-
-// Normalization: map specific device types to 'device' for rules lookup.
+// Normalize specific device types to 'device' for rules lookup
 function normalizeParentType(parentType) {
   if (!parentType) return null;
   if (DEVICE_TYPES.includes(parentType)) return 'device';
@@ -61,15 +66,12 @@ export function getAllowedChildren(parentType) {
 export function isAllowedAtTopLevel(type) {
   /** Check if a type can be created at top-level (no parentId). */
   if (!type) return false;
-  if (TOP_LEVEL_TYPES.includes(type)) return true;
-  // Overrides allow directly at top-level as well
-  if (TOP_LEVEL_OVERRIDES.includes(type)) return true;
-  return false;
+  return TOP_LEVEL_TYPES.includes(type);
 }
 
 // PUBLIC_INTERFACE
 export function isDeviceType(type) {
-  /** Returns true if the given type is considered a device. */
+  /** Returns true if the given type is considered a device variant. */
   return DEVICE_TYPES.includes(type) || type === 'device';
 }
 
@@ -77,24 +79,19 @@ export function isDeviceType(type) {
 export function canContain(parentType, childType) {
   /**
    * Determine if a parent of parentType can contain a child of childType.
-   * - Applies device normalization so that 'router'/'switch'/'generic-device' behave as 'device'.
+   * - Applies device normalization so that 'router'/'switch' behave as 'device'.
    * - Returns false if either type is missing or unknown to rules.
    */
   if (!parentType || !childType) return false;
   const normalizedParent = normalizeParentType(parentType);
-  // If the parent is unknown, reject by default
   if (!normalizedParent) return false;
 
   const allowed = ALLOWED_CHILDREN[normalizedParent];
   if (!Array.isArray(allowed)) return false;
 
-  // Child can be a specific device variant; parent 'position'/'slot' permits 'device' in rules
   if (childType === 'device' || isDeviceType(childType)) {
-    // If parent allows 'device' and child is one of the device variants, accept
-    if (allowed.includes('device')) return true;
+    return allowed.includes('device');
   }
-
-  // Else direct membership check
   return allowed.includes(childType);
 }
 
@@ -104,4 +101,64 @@ export function describeContainmentRule(parentType) {
   const children = getAllowedChildren(parentType);
   if (!children.length) return `${parentType} cannot contain any children`;
   return `${parentType} may contain: ${children.join(', ')}`;
+}
+
+// Caps for rack children
+const RACK_POSITION_MIN = 1;
+const RACK_POSITION_MAX = 42;
+const RACK_SLOT_MIN = 1;
+const RACK_SLOT_MAX = 16;
+
+// PUBLIC_INTERFACE
+export function validateRackPositionIndex(index) {
+  /** Validate that rackPosition index is within [1..42]. */
+  const n = Number(index);
+  return Number.isInteger(n) && n >= RACK_POSITION_MIN && n <= RACK_POSITION_MAX;
+}
+
+// PUBLIC_INTERFACE
+export function validateRackSlotIndex(index) {
+  /** Validate that slot index is within [1..16]. */
+  const n = Number(index);
+  return Number.isInteger(n) && n >= RACK_SLOT_MIN && n <= RACK_SLOT_MAX;
+}
+
+// PUBLIC_INTERFACE
+export function canAddChildWithCaps(parentNode, childType, siblings = []) {
+  /**
+   * Enforce caps for rack children:
+   * - parent type 'rack':
+   *   * 'rackPosition' children: max 42, indices must be 1..42, unique
+   *   * 'slot' children: max 16, indices must be 1..16, unique
+   * For other parents, no caps (besides matrix) are enforced here.
+   *
+   * parentNode: a node object that includes .type (domain type).
+   * childType: type being added.
+   * siblings: array of existing child nodes under this parent (domain nodes).
+   *
+   * Returns: { ok: boolean, message?: string }
+   */
+  const pType = parentNode?.type || parentNode?.data?.domainType || parentNode?.data?.type || null;
+  const normalizedParent = normalizeParentType(pType);
+  if (normalizedParent !== 'rack') {
+    return { ok: true };
+  }
+
+  if (childType === 'rackPosition') {
+    const existing = siblings.filter((c) => (c.type || c?.data?.domainType || c?.data?.type) === 'rackPosition');
+    if (existing.length >= RACK_POSITION_MAX) {
+      return { ok: false, message: `A rack can have at most ${RACK_POSITION_MAX} rackPosition children.` };
+    }
+    return { ok: true };
+  }
+
+  if (childType === 'slot') {
+    const existing = siblings.filter((c) => (c.type || c?.data?.domainType || c?.data?.type) === 'slot');
+    if (existing.length >= RACK_SLOT_MAX) {
+      return { ok: false, message: `A rack can have at most ${RACK_SLOT_MAX} slot children.` };
+    }
+    return { ok: true };
+  }
+
+  return { ok: true };
 }

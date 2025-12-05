@@ -1,4 +1,9 @@
-import { canContain, isAllowedAtTopLevel } from './schema/containmentRules';
+import {
+  canContain,
+  isAllowedAtTopLevel,
+  validateRackPositionIndex,
+  validateRackSlotIndex,
+} from './schema/containmentRules';
 
 const USE_DELAY_MS = (() => {
   const v = Number(process?.env?.REACT_APP_MOCK_DELAY_MS);
@@ -21,8 +26,21 @@ const memory = {
 
 // Seed palette
 const seededPalette = [
+  // Top-level
+  { id: 'site', type: 'site', label: 'Site', icon: 'office' },
+  // Hierarchy
+  { id: 'building', type: 'building', label: 'Building', icon: 'office' },
+  { id: 'room', type: 'room', label: 'Room', icon: 'door' },
+  { id: 'rack', type: 'rack', label: 'Rack', icon: 'server' },
+  { id: 'rackPosition', type: 'rackPosition', label: 'Rack Position', icon: 'hash' },
+  { id: 'slot', type: 'slot', label: 'Slot', icon: 'hash' },
+  // Devices
   { id: 'router', type: 'router', label: 'Router', icon: 'router' },
   { id: 'switch', type: 'switch', label: 'Switch', icon: 'switch' },
+  // Device children
+  { id: 'interface', type: 'interface', label: 'Interface', icon: 'plug' },
+  { id: 'port', type: 'port', label: 'Port', icon: 'plug' },
+  // Tools
   { id: 'link', type: 'link', label: 'Link', icon: 'link' },
 ];
 
@@ -58,7 +76,7 @@ export async function getPalette() {
   return seededPalette.slice();
 }
 
-import { canContain, isAllowedAtTopLevel } from './schema/containmentRules';
+
 
 // PUBLIC_INTERFACE
 export async function createNode(payload) {
@@ -94,6 +112,44 @@ export async function createNode(payload) {
       err.status = 400;
       err.data = { message: `Cannot place a ${type} inside ${parentType}` };
       throw err;
+    }
+
+    // Enforce caps on rack children
+    if (parentType === 'rack') {
+      const siblings = Array.from(memory.nodes.values()).filter((n) => (n.parentId || n?.data?.parentId || null) === parentId);
+      if (type === 'rackPosition') {
+        const existingPositions = siblings.filter((n) => (n.type || n?.data?.domainType || n?.data?.type) === 'rackPosition');
+        if (existingPositions.length >= 42) {
+          const err = new Error('Rack position cap exceeded');
+          err.status = 400;
+          err.data = { message: 'A rack can have at most 42 rackPosition children.' };
+          throw err;
+        }
+        // If client sets an index, enforce range (and basic uniqueness by value)
+        const idx = payload?.props?.index ?? payload?.index;
+        if (idx !== undefined && !validateRackPositionIndex(idx)) {
+          const err = new Error('Invalid rackPosition index');
+          err.status = 400;
+          err.data = { message: 'rackPosition index must be an integer in range 1..42.' };
+          throw err;
+        }
+      }
+      if (type === 'slot') {
+        const existingSlots = siblings.filter((n) => (n.type || n?.data?.domainType || n?.data?.type) === 'slot');
+        if (existingSlots.length >= 16) {
+          const err = new Error('Rack slot cap exceeded');
+          err.status = 400;
+          err.data = { message: 'A rack can have at most 16 slot children.' };
+          throw err;
+        }
+        const idx = payload?.props?.index ?? payload?.index;
+        if (idx !== undefined && !validateRackSlotIndex(idx)) {
+          const err = new Error('Invalid slot index');
+          err.status = 400;
+          err.data = { message: 'slot index must be an integer in range 1..16.' };
+          throw err;
+        }
+      }
     }
   } else {
     // top-level creation must be explicitly allowed

@@ -12,7 +12,11 @@ import { useGraphStore } from '../store/graphStore';
 import { createNode as apiCreateNode, createEdge as apiCreateEdge } from '../services/api';
 import { toast } from '../utils/toast';
 import './GraphCanvas.css';
-import { canContain, isAllowedAtTopLevel } from '../services/schema/containmentRules';
+import {
+  canContain,
+  isAllowedAtTopLevel,
+  canAddChildWithCaps,
+} from '../services/schema/containmentRules';
 
 // PUBLIC_INTERFACE
 export default function GraphCanvas({ onContextMenu }) {
@@ -128,15 +132,39 @@ export default function GraphCanvas({ onContextMenu }) {
 
       const childType = item.type;
 
-      // Validate containment
+      // Validate containment matrix
       if (parentId) {
         if (!canContain(parentType, childType)) {
           toast(`Cannot place a ${childType} inside ${parentType}.`, 'error');
           return;
         }
+        // Enforce quantity caps for specific parent/child combos (e.g., rack)
+        const parentNode = rfNodes.find((n) => n.id === parentId);
+        const siblingChildren = rfNodes.filter((n) => (n.data?.parentId || null) === parentId);
+        const cap = canAddChildWithCaps(
+          // map RF node to domain-ish shape
+          {
+            id: parentNode?.id,
+            type: parentType,
+            data: { domainType: parentType },
+          },
+          childType,
+          siblingChildren.map((n) => ({
+            id: n.id,
+            type: n.data?.domainType || n.data?.type || n.type,
+            data: { ...n.data },
+          }))
+        );
+        if (!cap.ok) {
+          toast(cap.message || `Cannot add ${childType} due to parent constraints.`, 'error');
+          return;
+        }
       } else {
         if (!isAllowedAtTopLevel(childType)) {
-          toast(`Cannot create ${childType} at top-level. Select a parent or create an allowed top-level type.`, 'error');
+          toast(
+            `Cannot create ${childType} at top-level. Select a parent or create an allowed top-level type.`,
+            'error'
+          );
           return;
         }
       }
