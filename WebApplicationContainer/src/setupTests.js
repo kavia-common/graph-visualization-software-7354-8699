@@ -9,34 +9,36 @@
    Install both process and window handlers (for JSDOM) and guard to avoid double-binding. */
 if (!global.__TEST_ERROR_HANDLERS__) {
   global.__TEST_ERROR_HANDLERS__ = true;
-  process.on('unhandledRejection', (reason) => {
+
+  // Temporary verbose logging to surface rejection sources in CI
+  const logWithStack = (label, err) => {
     // eslint-disable-next-line no-console
-    console.error('Unhandled Rejection during tests:', reason);
+    console.error(label, err && err.stack ? err.stack : err);
+  };
+
+  process.on('unhandledRejection', (reason) => {
+    logWithStack('Unhandled Rejection during tests:', reason);
     throw (reason instanceof Error) ? reason : new Error(String(reason));
   });
 
   process.on('uncaughtException', (err) => {
-    // eslint-disable-next-line no-console
-    console.error('Uncaught Exception during tests:', err);
+    logWithStack('Uncaught Exception during tests:', err);
     throw err;
   });
 
   if (typeof window !== 'undefined' && window.addEventListener) {
     window.addEventListener('unhandledrejection', (event) => {
-      // eslint-disable-next-line no-console
-      console.error('Window unhandledrejection during tests:', event.reason);
-      // Prevent default to avoid noisy logs
+      logWithStack('Window unhandledrejection during tests:', event?.reason);
       event.preventDefault?.();
-      throw (event.reason instanceof Error) ? event.reason : new Error(String(event.reason));
+      throw (event?.reason instanceof Error) ? event.reason : new Error(String(event?.reason));
     });
     window.addEventListener('error', (event) => {
-      // eslint-disable-next-line no-console
-      console.error('Window error during tests:', event.error || event.message);
+      logWithStack('Window error during tests:', event?.error || event?.message);
       event.preventDefault?.();
-      if (event.error) {
+      if (event?.error) {
         throw event.error;
       } else {
-        throw new Error(String(event.message || 'Window error'));
+        throw new Error(String(event?.message || 'Window error'));
       }
     });
   }
@@ -87,3 +89,14 @@ afterEach(() => {
 // Set test-friendly defaults for feature flags (tests can override via process.env in individual files)
 process.env.REACT_APP_FEATURE_FLAGS = process.env.REACT_APP_FEATURE_FLAGS || '';
 process.env.REACT_APP_EXPERIMENTS_ENABLED = process.env.REACT_APP_EXPERIMENTS_ENABLED || 'false';
+
+// Final teardown to reduce open handles potentially left by libraries
+afterAll(() => {
+  try {
+    if (typeof global.gc === 'function') {
+      global.gc();
+    }
+  } catch (_) {
+    // ignore
+  }
+});

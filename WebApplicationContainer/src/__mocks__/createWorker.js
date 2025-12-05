@@ -4,9 +4,13 @@
 //
 export function createModuleWorker() {
   // Minimal stub with the same surface as the real worker object
-  return {
+  const worker = {
     postMessage() {},
     terminate() {},
     onmessage: null,
   };
+  // Provide then-able no-op so accidental awaiting doesn't create unhandled rejections
+  // eslint-disable-next-line func-names
+  worker.then = function (resolve) { try { resolve && resolve(worker); } catch (_) {} return worker; };
+  return worker;
 }
