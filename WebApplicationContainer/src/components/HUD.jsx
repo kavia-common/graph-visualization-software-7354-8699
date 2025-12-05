@@ -34,7 +34,7 @@ export default function HUD() {
     return () => clearInterval(id);
   }, []);
   return (
-    <div className="hud" aria-live="polite">
+    <div className="hud" aria-live="polite" role="status" aria-label="Performance HUD">
       <div>FPS: {fps}</div>
       {featureEnabled('perf-counters') && (
         <div style={{ marginTop: 4 }}>

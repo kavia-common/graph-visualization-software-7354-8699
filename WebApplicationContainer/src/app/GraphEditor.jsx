@@ -48,8 +48,14 @@ export default function GraphEditor() {
 
   // Experimental validate worker
   useEffect(() => {
+    // Skip in test environments or if Worker/new URL is not supported
+    const isTest = typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'test';
+    const canUseWorker = typeof Worker !== 'undefined' && typeof URL !== 'undefined';
+    if (isTest || !canUseWorker) return;
+
     if (!experiments() || !featureEnabled('validate-worker')) return;
     try {
+      // Guard import.meta.url access by constructing URL only when available
       const worker = new Worker(new URL('../workers/validate.worker.js', import.meta.url), { type: 'module' });
       worker.onmessage = (evt) => {
         // eslint-disable-next-line no-unused-vars

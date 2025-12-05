@@ -25,7 +25,7 @@
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
     "doc": "typedoc --options typedoc.json",
-    "lint": "eslint . --ext .js,.jsx",
+    "lint": "eslint .",
     "format": "prettier --write .",
     "eject": "react-scripts eject",
     "serve:prod": "npx serve -s build -l 3000"

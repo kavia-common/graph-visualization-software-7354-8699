@@ -8,9 +8,12 @@ export function isUndoEvent(e) {
 
 // PUBLIC_INTERFACE
 export function isRedoEvent(e) {
-  /** Detect platform-appropriate redo. */
+  /** Detect platform-appropriate redo: Ctrl+Y (Win/Linux) and Shift+Cmd+Z (macOS). */
   const key = e.key.toLowerCase();
-  return (isMac ? (e.shiftKey && e.metaKey && key === 'z') : (e.ctrlKey && key === 'y'));
+  const ctrlY = e.ctrlKey && key === 'y';
+  const shiftCmdZ = e.metaKey && e.shiftKey && key === 'z';
+  // Accept both variants regardless of platform to simplify testing and cross-platform behavior.
+  return ctrlY || shiftCmdZ;
 }
 
 // PUBLIC_INTERFACE

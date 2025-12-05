@@ -1,16 +1,23 @@
-const flags = (process.env.REACT_APP_FEATURE_FLAGS || '').split(',').map(f => f.trim());
-const experimentsEnabled = String(process.env.REACT_APP_EXPERIMENTS_ENABLED || '').toLowerCase() === 'true';
+function readFlags() {
+  const csv = process.env.REACT_APP_FEATURE_FLAGS || '';
+  // guard: split empty to [''] -> filter empties
+  return csv.split(',').map(f => f.trim()).filter(Boolean);
+}
+function readExperiments() {
+  return String(process.env.REACT_APP_EXPERIMENTS_ENABLED || '').toLowerCase() === 'true';
+}
 
 // PUBLIC_INTERFACE
 export function featureEnabled(name) {
-  /** Check if a feature flag is enabled via REACT_APP_FEATURE_FLAGS CSV list. */
+  /** Check if a feature flag is enabled via REACT_APP_FEATURE_FLAGS CSV list. Evaluated at call-time. */
+  const flags = readFlags();
   return flags.includes(name);
 }
 
 // PUBLIC_INTERFACE
 export function experiments() {
-  /** Returns whether experiments are enabled via REACT_APP_EXPERIMENTS_ENABLED. */
-  return experimentsEnabled;
+  /** Returns whether experiments are enabled via REACT_APP_EXPERIMENTS_ENABLED. Evaluated at call-time. */
+  return readExperiments();
 }
 
 // PUBLIC_INTERFACE

@@ -36,6 +36,10 @@ export default function GraphCanvas({ onContextMenu }) {
 
   // Experimental layout worker to spread out nodes
   React.useEffect(() => {
+    const isTest = typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'test';
+    const canUseWorker = typeof Worker !== 'undefined' && typeof URL !== 'undefined';
+    if (isTest || !canUseWorker) return;
+
     if (!experiments() || !featureEnabled('layout-worker')) return;
     if (!nodes?.length) return;
     counter('layout_runs', 1);
