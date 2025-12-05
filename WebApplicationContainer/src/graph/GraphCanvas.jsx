@@ -12,6 +12,7 @@ import { useGraphStore } from '../store/graphStore';
 import { createNode as apiCreateNode, createEdge as apiCreateEdge } from '../services/api';
 import { toast } from '../utils/toast';
 import './GraphCanvas.css';
+import { canContain, isAllowedAtTopLevel } from '../services/schema/containmentRules';
 
 // PUBLIC_INTERFACE
 export default function GraphCanvas({ onContextMenu }) {
@@ -89,6 +90,7 @@ export default function GraphCanvas({ onContextMenu }) {
     async (event) => {
       event.preventDefault();
       if (readOnly) return;
+
       const data = event.dataTransfer.getData('application/x-graph-item');
       if (!data) return;
       let item;
@@ -97,38 +99,84 @@ export default function GraphCanvas({ onContextMenu }) {
       } catch {
         return;
       }
+
+      // Determine drop position relative to canvas
       const bounds = containerRef.current?.getBoundingClientRect();
       const pos = {
         x: event.clientX - (bounds?.left ?? 0),
         y: event.clientY - (bounds?.top ?? 0),
       };
+
+      // Try to infer a parent from current selection (if exactly one node selected)
+      // In a more advanced UI we would perform hit-testing; for now we use selection as the intended parent.
+      let parentId = null;
+      let parentType = null;
+      try {
+        const selectedNodeIds = selection.filter((sid) => rfNodes.some((n) => n.id === sid));
+        if (selectedNodeIds.length === 1) {
+          parentId = selectedNodeIds[0];
+          const parent = rfNodes.find((n) => n.id === parentId);
+          // Parent type information lives in domain node (not ReactFlow node). We carry only visual node here.
+          // For now, allow consumers to store domain type on data.domainType if present.
+          parentType = parent?.data?.domainType || parent?.data?.type || parent?.type || null;
+          // Fallback to label-based type if needed; in production, nodes should carry a domain type field.
+          if (typeof parentType !== 'string') parentType = null;
+        }
+      } catch {
+        // ignore inference errors
+      }
+
+      const childType = item.type;
+
+      // Validate containment
+      if (parentId) {
+        if (!canContain(parentType, childType)) {
+          toast(`Cannot place a ${childType} inside ${parentType}.`, 'error');
+          return;
+        }
+      } else {
+        if (!isAllowedAtTopLevel(childType)) {
+          toast(`Cannot create ${childType} at top-level. Select a parent or create an allowed top-level type.`, 'error');
+          return;
+        }
+      }
+
       const id = `n_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
       const newNode = {
         id,
         position: pos,
-        data: { label: item.label || item.type },
+        data: {
+          label: item.label || item.type,
+          type: item.type,
+          domainType: item.type, // surface domain type on data for parentType inference later
+          parentId: parentId || null,
+        },
         type: 'default',
       };
+
       // optimistic add
       setNodes((nds) => [...nds, newNode]);
+
       try {
         await apiCreateNode({
           id,
           type: item.type,
           label: item.label || item.type,
           position: pos,
+          parentId: parentId || null,
           props: {},
         });
       } catch (err) {
         if (err && !err.isNetwork && err.status !== 404) {
-          toast('Failed to save node to backend, rolling back.', 'error');
+          const msg = err?.data?.message || 'Failed to save node to backend, rolling back.';
+          toast(msg, 'error');
           setNodes((nds) => nds.filter((n) => n.id !== id));
         } else {
           toast('Backend unavailable; working locally.', 'warn');
         }
       }
     },
-    [readOnly, setNodes]
+    [readOnly, selection, rfNodes, setNodes]
   );
 
   const onDragOver = useCallback((event) => {

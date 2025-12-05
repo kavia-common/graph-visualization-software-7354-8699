@@ -1,6 +1,7 @@
 import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
 import schemaV1 from './v1.schema.json';
+// Containment rules live in './containmentRules' and act as the single source of truth for parent->child relationships.
 
 // PUBLIC_INTERFACE
 export function getCurrentSchemaVersion() {

@@ -1,3 +1,5 @@
+import { canContain, isAllowedAtTopLevel } from './schema/containmentRules';
+
 const USE_DELAY_MS = (() => {
   const v = Number(process?.env?.REACT_APP_MOCK_DELAY_MS);
   if (Number.isFinite(v) && v >= 0) return Math.min(Math.max(v, 0), 2000);
@@ -56,15 +58,53 @@ export async function getPalette() {
   return seededPalette.slice();
 }
 
+import { canContain, isAllowedAtTopLevel } from './schema/containmentRules';
+
 // PUBLIC_INTERFACE
 export async function createNode(payload) {
   /**
    * Create a node in memory.
-   * payload: { id?, type, label, position, props }
+   * payload: { id?, type, label, position, props, parentId? }
+   * Validates containment if parentId provided. If parentId is null/undefined, only allow TOP_LEVEL_TYPES.
    * Returns persisted node: { id, ...payload }
    */
   await delay();
   maybeFail();
+
+  const { type, parentId } = payload || {};
+  if (!type) {
+    const err = new Error('Invalid payload: type is required');
+    err.status = 400;
+    err.data = { message: 'type is required' };
+    throw err;
+  }
+
+  // Resolve parent type if parentId supplied
+  if (parentId) {
+    const parent = memory.nodes.get(parentId);
+    if (!parent) {
+      const err = new Error('Parent not found');
+      err.status = 400;
+      err.data = { message: `Parent '${parentId}' not found` };
+      throw err;
+    }
+    const parentType = parent.type || parent?.data?.type || parent?.data?.domainType || null;
+    if (!canContain(parentType, type)) {
+      const err = new Error('Invalid placement');
+      err.status = 400;
+      err.data = { message: `Cannot place a ${type} inside ${parentType}` };
+      throw err;
+    }
+  } else {
+    // top-level creation must be explicitly allowed
+    if (!isAllowedAtTopLevel(type)) {
+      const err = new Error('Invalid top-level type');
+      err.status = 400;
+      err.data = { message: `Cannot create ${type} at top-level` };
+      throw err;
+    }
+  }
+
   const id = payload.id || nextNodeId();
   const node = { id, ...payload };
   memory.nodes.set(id, node);
