@@ -34,25 +34,36 @@ export default function GraphCanvas({ onContextMenu }) {
   React.useEffect(() => rfSetNodes(nodes), [nodes, rfSetNodes]);
   React.useEffect(() => rfSetEdges(edges), [edges, rfSetEdges]);
 
-  // Experimental layout worker to spread out nodes
+  // Experimental layout worker to spread out nodes (guarded for tests)
   React.useEffect(() => {
-    const isTest = typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'test';
-    const canUseWorker = typeof Worker !== 'undefined' && typeof URL !== 'undefined';
-    if (isTest || !canUseWorker) return;
+    const isTest =
+      (typeof process !== 'undefined' &&
+        process.env &&
+        (process.env.NODE_ENV === 'test' || process.env.REACT_APP_NODE_ENV === 'test')) ||
+      false;
+    const canUseWorker =
+      typeof Worker !== 'undefined' &&
+      typeof URL !== 'undefined';
 
+    if (isTest || !canUseWorker) return;
     if (!experiments() || !featureEnabled('layout-worker')) return;
     if (!nodes?.length) return;
+
     counter('layout_runs', 1);
-    const worker = new Worker(new URL('../workers/layout.worker.js', import.meta.url), { type: 'module' });
-    worker.onmessage = (evt) => {
-      const { nodes: laidOut } = evt.data || {};
-      if (Array.isArray(laidOut)) {
-        setNodes(laidOut);
-      }
-      worker.terminate();
-    };
-    worker.postMessage({ nodes, edges });
-    return () => worker.terminate();
+    try {
+      const worker = new Worker(new URL('../workers/layout.worker.js', import.meta.url), { type: 'module' });
+      worker.onmessage = (evt) => {
+        const { nodes: laidOut } = evt.data || {};
+        if (Array.isArray(laidOut)) {
+          setNodes(laidOut);
+        }
+        worker.terminate();
+      };
+      worker.postMessage({ nodes, edges });
+      return () => worker.terminate();
+    } catch {
+      // swallow
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodes?.length]);
 

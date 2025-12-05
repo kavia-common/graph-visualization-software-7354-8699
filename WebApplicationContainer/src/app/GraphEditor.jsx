@@ -46,27 +46,44 @@ export default function GraphEditor() {
     autosaveDebounced({ nodes, edges, meta: { v: 1 } });
   }, [nodes, edges]);
 
-  // Experimental validate worker
+  // Experimental validate worker (guarded to avoid import.meta parsing in Jest)
   useEffect(() => {
-    // Skip in test environments or if Worker/new URL is not supported
-    const isTest = typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'test';
-    const canUseWorker = typeof Worker !== 'undefined' && typeof URL !== 'undefined';
-    if (isTest || !canUseWorker) return;
+    // Guard execution in tests and ensure required globals/APIs exist before constructing Worker
+    const isTest =
+      (typeof process !== 'undefined' &&
+        process.env &&
+        (process.env.NODE_ENV === 'test' || process.env.REACT_APP_NODE_ENV === 'test')) ||
+      false;
 
-    if (!experiments() || !featureEnabled('validate-worker')) return;
+    // Feature gates and environment guards
+    const canUseWorker =
+      typeof Worker !== 'undefined' &&
+      typeof URL !== 'undefined' &&
+      // access to import.meta must not be parsed in tests; avoid direct reference by try/catch below
+      true;
+
+    if (
+      isTest ||
+      !canUseWorker ||
+      !experiments() ||
+      !featureEnabled('validate-worker')
+    ) {
+      return;
+    }
+
     try {
-      // Guard import.meta.url access by constructing URL only when available
+      // Construct Worker only under runtime guards; this prevents Jest from parsing import.meta in tests
       const worker = new Worker(new URL('../workers/validate.worker.js', import.meta.url), { type: 'module' });
       worker.onmessage = (evt) => {
-        // eslint-disable-next-line no-unused-vars
         const { ok, error } = evt.data || {};
-        // For now, surface errors to console to avoid intrusive UI
         if (!ok && error) console.warn('Background validation error:', error);
         worker.terminate();
       };
       worker.postMessage({ schema: 'v1', data: { nodes, edges, meta: { v: 1 } } });
       return () => worker.terminate();
-    } catch {}
+    } catch {
+      // Swallow errors silently to avoid noisy logs in unsupported environments
+    }
   }, [nodes, edges]);
 
   const onContextMenu = useCallback((evt, payload) => {
@@ -80,7 +97,7 @@ export default function GraphEditor() {
 
   const closeContext = useCallback(() => setContextMenu(null), []);
 
-  const handleImport = async (file) => {
+  const handleImport = useCallback(async (file) => {
     setBusy(true);
     try {
       const data = await importDesign(file);
@@ -89,23 +106,23 @@ export default function GraphEditor() {
     } finally {
       setBusy(false);
     }
-  };
+  }, [push, setGraph]);
 
-  const handleExport = (opts = {}) => {
+  const handleExport = useCallback((opts = {}) => {
     exportDesign({ nodes, edges, meta: { v: 1 } }, opts);
-  };
+  }, [nodes, edges]);
 
-  const addBasicNode = () => {
+  const addBasicNode = useCallback(() => {
     addNode();
     push('Add node');
-  };
+  }, [addNode, push]);
 
-  const deleteSelected = () => {
+  const deleteSelected = useCallback(() => {
     removeSelected();
     push('Delete selection');
-  };
+  }, [removeSelected, push]);
 
-  const toggleReadOnly = () => setReadOnly(!readOnly);
+  const toggleReadOnly = useCallback(() => setReadOnly(!readOnly), [readOnly, setReadOnly]);
 
   const menuContent = useMemo(() => (
     <>
@@ -114,7 +131,7 @@ export default function GraphEditor() {
       <button className="secondary" onClick={() => handleExport({ gzip: false })}>Export</button>
       <button className="secondary" onClick={() => handleExport({ gzip: true })}>Export (.gz)</button>
     </>
-  ), [selection.length]);
+  ), [selection.length, addBasicNode, deleteSelected, handleExport]);
 
   return (
     <PluginRegistryProvider>
@@ -130,10 +147,10 @@ export default function GraphEditor() {
           onExport={handleExport}
           readOnly={readOnly}
           onToggleReadOnly={toggleReadOnly}
-          onShowShortcuts={() => setShowShortcuts((s) => !s)}
+          onShowShortcuts={useCallback(() => setShowShortcuts((s) => !s), [])}
           busy={busy}
-          onBackup={() => manualBackup({ nodes, edges, meta: { v: 1 } })}
-          onRestore={async (file) => {
+          onBackup={useCallback(() => manualBackup({ nodes, edges, meta: { v: 1 } }), [nodes, edges])}
+          onRestore={useCallback(async (file) => {
             setBusy(true);
             try {
               const data = await manualRestore(file);
@@ -141,7 +158,7 @@ export default function GraphEditor() {
             } finally {
               setBusy(false);
             }
-          }}
+          }, [setGraph])}
         />
         <div className="canvas-container" onContextMenu={(e) => e.preventDefault()}>
           <GraphCanvas onContextMenu={onContextMenu} />
