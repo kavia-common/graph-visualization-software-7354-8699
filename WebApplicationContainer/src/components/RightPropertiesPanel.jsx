@@ -3,25 +3,36 @@ import { useGraphStore } from '../store/graphStore';
 import { updateNode } from '../services/api';
 import { toast } from '../utils/toast';
 
+// PUBLIC_INTERFACE
 export default function RightPropertiesPanel() {
+  /**
+   * Properties panel for the currently selected node.
+   * Reads label from node.data.label and writes via store.updateNode to keep ReactFlow shape.
+   * If an edge or nothing is selected, shows an empty prompt.
+   */
   const selectedId = useGraphStore((s) => s.selectedId);
   const node = useGraphStore((s) => s.nodes.find((n) => n.id === s.selectedId));
   const updateNodeLocal = useGraphStore((s) => s.updateNode);
 
+  // Local form state mirrors editable pieces
   const [form, setForm] = React.useState(null);
+
   React.useEffect(() => {
     if (node) {
+      // Map underlying structure -> form fields
+      const safeData = node.data || {};
       setForm({
-        label: node.label || '',
-        type: node.type || '',
+        label: safeData.label || '',
+        type: node.type || 'default',
         props: { ...(node.props || {}) },
       });
     } else {
       setForm(null);
     }
-  }, [node?.id]);
+    // Depend on node object identity; when selection changes this reruns
+  }, [node]);
 
-  if (!node) {
+  if (!node || !form) {
     return (
       <aside
         aria-label="Properties"
@@ -39,11 +50,11 @@ export default function RightPropertiesPanel() {
   }
 
   const setField = (key, value) => {
-    setForm((prev) => ({ ...prev, [key]: value }));
+    setForm((prev) => ({ ...(prev || {}), [key]: value }));
   };
 
   const setProp = (k, v) => {
-    setForm((prev) => ({ ...prev, props: { ...(prev.props || {}), [k]: v } }));
+    setForm((prev) => ({ ...(prev || {}), props: { ...((prev && prev.props) || {}), [k]: v } }));
   };
 
   const onSave = async (e) => {
@@ -53,9 +64,15 @@ export default function RightPropertiesPanel() {
       toast('Label and Type are required.', 'warning');
       return;
     }
-    const patch = { label: form.label, type: form.type, props: form.props };
-    const prev = { label: node.label, type: node.type, props: node.props };
-    // optimistic
+    // Map form -> store patch shape
+    const patch = { label: form.label, type: form.type, props: form.props || {} };
+    const prev = {
+      label: (node.data && node.data.label) || '',
+      type: node.type || 'default',
+      props: node.props || {},
+    };
+
+    // optimistic local update ensures data.label gets set by store.updateNode
     updateNodeLocal(node.id, patch);
     try {
       await updateNode(node.id, patch);
@@ -110,7 +127,7 @@ export default function RightPropertiesPanel() {
             IP
             <input
               type="text"
-              value={form.props?.ip || ''}
+              value={(form.props && form.props.ip) || ''}
               onChange={(e) => setProp('ip', e.target.value)}
               placeholder="e.g., 192.168.0.1"
               style={{ width: '100%', padding: 6, border: '1px solid #d1d5db', borderRadius: 4 }}
@@ -120,7 +137,7 @@ export default function RightPropertiesPanel() {
             Model
             <input
               type="text"
-              value={form.props?.model || ''}
+              value={(form.props && form.props.model) || ''}
               onChange={(e) => setProp('model', e.target.value)}
               placeholder="e.g., XR500"
               style={{ width: '100%', padding: 6, border: '1px solid #d1d5db', borderRadius: 4 }}
