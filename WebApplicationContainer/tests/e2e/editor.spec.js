@@ -5,11 +5,11 @@ test.describe('Graph Editor basic UX', () => {
     await page.goto('/');
     const toolbar = page.getByRole('toolbar');
     await expect(toolbar).toBeVisible();
-    const roBtn = toolbar.getByRole('button', { name: /editable/i });
+    const roBtn = page.getByTestId('toolbar-toggle-readonly');
     await roBtn.click();
-    await expect(toolbar.getByRole('button', { name: /read-only/i })).toBeVisible();
-    await expect(toolbar.getByRole('button', { name: /\+ node/i })).toBeDisabled();
-    await expect(toolbar.getByRole('button', { name: /delete/i })).toBeDisabled();
+    await expect(page.getByRole('button', { name: /read-only/i })).toBeVisible();
+    await expect(page.getByTestId('toolbar-add-node')).toBeDisabled();
+    await expect(page.getByTestId('toolbar-delete')).toBeDisabled();
   });
 
   test('shortcuts overlay toggles', async ({ page }) => {

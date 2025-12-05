@@ -5,18 +5,42 @@
   * - Keep jest-dom and existing Worker mock to avoid worker import issues in tests.
   */
 
-// Fail fast on process-level async errors so CI surfaces the failing test deterministically
-process.on('unhandledRejection', (reason) => {
-  // eslint-disable-next-line no-console
-  console.error('Unhandled Rejection during tests:', reason);
-  throw (reason instanceof Error) ? reason : new Error(String(reason));
-});
+/* Fail fast on async errors so CI surfaces the failing test deterministically.
+   Install both process and window handlers (for JSDOM) and guard to avoid double-binding. */
+if (!global.__TEST_ERROR_HANDLERS__) {
+  global.__TEST_ERROR_HANDLERS__ = true;
+  process.on('unhandledRejection', (reason) => {
+    // eslint-disable-next-line no-console
+    console.error('Unhandled Rejection during tests:', reason);
+    throw (reason instanceof Error) ? reason : new Error(String(reason));
+  });
 
-process.on('uncaughtException', (err) => {
-  // eslint-disable-next-line no-console
-  console.error('Uncaught Exception during tests:', err);
-  throw err;
-});
+  process.on('uncaughtException', (err) => {
+    // eslint-disable-next-line no-console
+    console.error('Uncaught Exception during tests:', err);
+    throw err;
+  });
+
+  if (typeof window !== 'undefined' && window.addEventListener) {
+    window.addEventListener('unhandledrejection', (event) => {
+      // eslint-disable-next-line no-console
+      console.error('Window unhandledrejection during tests:', event.reason);
+      // Prevent default to avoid noisy logs
+      event.preventDefault?.();
+      throw (event.reason instanceof Error) ? event.reason : new Error(String(event.reason));
+    });
+    window.addEventListener('error', (event) => {
+      // eslint-disable-next-line no-console
+      console.error('Window error during tests:', event.error || event.message);
+      event.preventDefault?.();
+      if (event.error) {
+        throw event.error;
+      } else {
+        throw new Error(String(event.message || 'Window error'));
+      }
+    });
+  }
+}
 
 /* jest-dom adds custom jest matchers for asserting on DOM nodes.
    allows you to do things like:

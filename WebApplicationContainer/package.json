@@ -28,8 +28,8 @@
     "eject": "react-scripts eject",
     "serve:prod": "npx serve -s build -l 3000",
     "e2e": "playwright test",
-    "e2e:install": "npm i --no-audit --no-fund && npx playwright install --with-deps",
-    "e2e:setup": "npm i --no-audit --no-fund && npx playwright install --with-deps",
+    "e2e:install": "npm install --no-audit --no-fund --prefer-online --no-optional && npx playwright install --with-deps",
+    "e2e:setup": "npm cache verify --force && npm install --no-audit --no-fund --prefer-online --no-optional && npx playwright install --with-deps",
     "e2e:ci": "npm run e2e"
   },
   "eslintConfig": {

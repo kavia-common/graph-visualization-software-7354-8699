@@ -1,17 +1,27 @@
 import { test, expect } from '@playwright/test';
 
-test('export buttons initiate download (navigational click allowed)', async ({ page }) => {
+test('export JSON initiates download (navigational click allowed)', async ({ page }) => {
   await page.goto('/');
-  // Scope to toolbar to avoid ambiguous buttons elsewhere
-  const toolbar = page.getByRole('toolbar');
-  const exportBtn = toolbar.getByRole('button', { name: /^export$/i });
+  const exportBtn = page.getByTestId('toolbar-export');
 
-  // Tie the download wait to the page object to avoid context ambiguity
   const [download] = await Promise.all([
     page.waitForEvent('download'),
     exportBtn.click(),
   ]);
 
   const suggested = download.suggestedFilename();
-  expect(suggested).toMatch(/graph-design-v1\.json$/i);
+  expect(suggested).toMatch(/graph-design-v\\d+\\.json$/i);
+});
+
+test('export GZ initiates download (navigational click allowed)', async ({ page }) => {
+  await page.goto('/');
+  const exportGzBtn = page.getByTestId('toolbar-export-gz');
+
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    exportGzBtn.click(),
+  ]);
+
+  const suggested = download.suggestedFilename();
+  expect(suggested).toMatch(/graph-design-v\\d+\\.json\\.gz$/i);
 });
