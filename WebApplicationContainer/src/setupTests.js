@@ -1,3 +1,23 @@
+ /**
+  * Global Jest setup for tests: stabilize async errors and clear timers between tests.
+  * - Capture unhandled promise rejections and uncaught exceptions so tests fail deterministically.
+  * - Ensure timers are reset after each test to avoid cross-test interference.
+  * - Keep jest-dom and existing Worker mock to avoid worker import issues in tests.
+  */
+
+// Fail fast on process-level async errors so CI surfaces the failing test deterministically
+process.on('unhandledRejection', (reason) => {
+  // eslint-disable-next-line no-console
+  console.error('Unhandled Rejection during tests:', reason);
+  throw (reason instanceof Error) ? reason : new Error(String(reason));
+});
+
+process.on('uncaughtException', (err) => {
+  // eslint-disable-next-line no-console
+  console.error('Uncaught Exception during tests:', err);
+  throw err;
+});
+
 /* jest-dom adds custom jest matchers for asserting on DOM nodes.
    allows you to do things like:
    expect(element).toHaveTextContent(/react/i)
@@ -19,38 +39,25 @@ if (typeof window !== 'undefined' && typeof window.Worker === 'undefined') {
   window.Worker = MockWorker;
 }
 
-// Temporary: swallow unhandled promise rejections during tests to prevent Node ERR_UNHANDLED_REJECTION
-// This can happen when RAF/interval callbacks throw during teardown.
-if (typeof window !== 'undefined') {
-  const handler = (event) => {
-    // Log to console for visibility in CI, but prevent test process from crashing.
-    // eslint-disable-next-line no-console
-    console.warn('Suppressed unhandledrejection in tests:', event.reason);
-    event.preventDefault?.();
-  };
-  window.addEventListener('unhandledrejection', handler);
-  // Also attach to process in case some libs emit at process level
-  if (typeof process !== 'undefined' && process.on) {
-    process.on('unhandledRejection', (reason) => {
-      // eslint-disable-next-line no-console
-      console.warn('Suppressed process unhandledRejection in tests:', reason);
-    });
-  }
-}
-
-// Ensure all timers/RAFs are cleared between tests to avoid leaks from HUD or others
+// Ensure all timers/RAFs/mocks are cleared between tests to avoid leaks from HUD or others
 afterEach(() => {
   try {
-    // A couple of RAF cycles to allow queued cleanups to run
-    if (typeof requestAnimationFrame !== 'undefined') {
-      for (let i = 0; i < 3; i++) {
-        requestAnimationFrame(() => {});
-      }
+    // Clear pending timers for both real and fake modes
+    if (typeof jest !== 'undefined' && typeof jest.clearAllTimers === 'function') {
+      jest.clearAllTimers();
     }
-  } catch {
-    // ignore
+    // Clear mocks to remove lingering timers created by mocks
+    if (typeof jest !== 'undefined' && typeof jest.clearAllMocks === 'function') {
+      jest.clearAllMocks();
+    }
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('Failed to clear timers/mocks in afterEach:', e);
   }
-  jest.useRealTimers();
+  // Always return to real timers at end of each test
+  if (typeof jest !== 'undefined' && typeof jest.useRealTimers === 'function') {
+    jest.useRealTimers();
+  }
 });
 
 // Set test-friendly defaults for feature flags (tests can override via process.env in individual files)
