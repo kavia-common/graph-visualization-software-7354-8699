@@ -45,7 +45,7 @@ test.describe('Large graph sanity and perf baseline', () => {
   test('basic performance baseline: render completes within time budget', async ({ page }) => {
     const start = Date.now();
     await page.goto('/');
-    await page.waitForSelector('[role="toolbar"]');
+    await page.getByRole('toolbar').waitFor({ state: 'visible' });
     const duration = Date.now() - start;
     // Budget: 2s for cold start on CI
     expect(duration).toBeLessThan(2000);

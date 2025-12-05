@@ -2,7 +2,8 @@ import { test, expect } from '@playwright/test';
 
 test('add 100 nodes without UI lag regression', async ({ page }) => {
   await page.goto('/');
-  const addBtn = page.getByRole('button', { name: /\+ node/i });
+  const toolbar = page.getByRole('toolbar');
+  const addBtn = toolbar.getByRole('button', { name: /\+ node/i });
   const start = Date.now();
   for (let i = 0; i < 100; i++) {
     await addBtn.click();
