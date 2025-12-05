@@ -28,13 +28,13 @@ if (!global.__TEST_ERROR_HANDLERS__) {
 
   if (typeof window !== 'undefined' && window.addEventListener) {
     window.addEventListener('unhandledrejection', (event) => {
+      try { event?.preventDefault?.(); } catch (_) {}
       logWithStack('Window unhandledrejection during tests:', event?.reason);
-      event.preventDefault?.();
       throw (event?.reason instanceof Error) ? event.reason : new Error(String(event?.reason));
     });
     window.addEventListener('error', (event) => {
+      try { event?.preventDefault?.(); } catch (_) {}
       logWithStack('Window error during tests:', event?.error || event?.message);
-      event.preventDefault?.();
       if (event?.error) {
         throw event.error;
       } else {

@@ -49,9 +49,12 @@ export function exportDesign(data, { gzip = false } = {}) {
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('Export failed (non-fatal):', err);
     } finally {
-      // Always revoke URL to prevent leaks
-      URL.revokeObjectURL(url);
+      // Always revoke URL to prevent leaks, even if click throws
+      try { URL.revokeObjectURL(url); } catch (_) {}
     }
   };
 
