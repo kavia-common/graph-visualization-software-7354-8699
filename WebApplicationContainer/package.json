@@ -33,6 +33,11 @@
   "eslintConfig": {
     "extends": "react-app"
   },
+  "jest": {
+    "moduleNameMapper": {
+      "^\\.\\./workers/createWorker$": "<rootDir>/src/__mocks__/createWorker.js"
+    }
+  },
   "browserslist": {
     "production": [
       ">0.2%",
