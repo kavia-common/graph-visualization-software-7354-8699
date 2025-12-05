@@ -1,7 +1,7 @@
 # Exclude build artifacts and externals
 build/
-dist/
 storybook-static/
-coverage/
 node_modules/
+coverage/
 test-results/
+dist/

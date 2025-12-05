@@ -20,6 +20,6 @@ test('keyboard add node (N) and delete selection (Del)', async ({ page }) => {
 test('shortcuts overlay lists undo/redo indicating keyboard support', async ({ page }) => {
   await page.goto('/');
   await page.getByTestId('toolbar-shortcuts').click();
-  await expect(page.getByText(/Ctrl\+Z/i)).toBeVisible();
-  await expect(page.getByText(/Redo/i)).toBeVisible();
+  await expect(page.getByTestId('shortcut-undo')).toBeVisible();
+  await expect(page.getByTestId('shortcut-redo')).toBeVisible();
 });

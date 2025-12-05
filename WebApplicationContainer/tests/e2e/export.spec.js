@@ -2,7 +2,8 @@ import { test, expect } from '@playwright/test';
 
 test('export JSON initiates download (navigational click allowed)', async ({ page }) => {
   await page.goto('/');
-  const exportBtn = page.getByTestId('toolbar-export');
+  // Prefer unique test id for export JSON
+  const exportBtn = page.getByTestId('toolbar-export').or(page.getByTestId('export-json'));
 
   const [download] = await Promise.all([
     page.waitForEvent('download'),

@@ -17,7 +17,7 @@
       - button "Redo" [ref=e14] [cursor=pointer]
       - button "Import" [ref=e16] [cursor=pointer]
       - button "Export" [ref=e17] [cursor=pointer]
-      - button "Export (.gz)" [ref=e18] [cursor=pointer]
+      - button "Export (.gz)" [active] [ref=e18] [cursor=pointer]
       - button "Editable" [ref=e20] [cursor=pointer]
       - button "Shortcuts" [ref=e21] [cursor=pointer]
       - button "Backup" [ref=e23] [cursor=pointer]
@@ -42,5 +42,5 @@
           - /url: https://reactflow.dev
           - text: React Flow
       - status "Performance HUD" [ref=e50]:
-        - generic [ref=e51]: "FPS: 0"
+        - generic [ref=e51]: "FPS: 60"
 ```

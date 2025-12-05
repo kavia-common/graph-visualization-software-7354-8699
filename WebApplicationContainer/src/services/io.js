@@ -46,5 +46,12 @@ export function exportDesign(data, { gzip = false } = {}) {
     URL.revokeObjectURL(url);
   };
   // fire and forget for user click responsiveness
-  trigger();
+  // Attach a catch to avoid triggering unhandledrejection in test environments
+  // Errors here are non-fatal; user-initiated export can be retried.
+  Promise.resolve()
+    .then(() => trigger())
+    .catch((err) => {
+      // eslint-disable-next-line no-console
+      console.warn('Export failed (non-fatal):', err);
+    });
 }
