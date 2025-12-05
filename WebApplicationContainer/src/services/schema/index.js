@@ -10,7 +10,10 @@ export function getCurrentSchemaVersion() {
 
 // PUBLIC_INTERFACE
 export function validateDesign(data) {
-  /** Validate the provided design object against the current schema. Throws on invalid. */
+  /**
+   * Validate the provided design object against the current schema. Throws on invalid.
+   * Backward compatibility: v1 allows optional fields for grouping/collapsed metadata.
+   */
   const ajv = new Ajv({ allErrors: true, strict: false });
   addFormats(ajv);
   const validate = ajv.compile(schemaV1);
@@ -24,7 +27,10 @@ export function validateDesign(data) {
 
 // PUBLIC_INTERFACE
 export function migrateToLatest(data) {
-  /** Placeholder migration pipeline. For v1 we simply return data. */
+  /**
+   * Placeholder migration pipeline. For v1 we simply return data.
+   * Future: add migrations to populate missing group/groupCollapsed fields with defaults.
+   */
   if (data?.meta?.v === 1) return data;
   // Future: add migration steps from v0 -> v1, etc.
   return data;

@@ -1,4 +1,5 @@
 import React from 'react';
+import { getCounters, featureEnabled } from '../perf/metrics';
 
 function useFPS() {
   const [fps, setFps] = React.useState(0);
@@ -24,11 +25,26 @@ function useFPS() {
 
 // PUBLIC_INTERFACE
 export default function HUD() {
-  /** Basic HUD showing FPS placeholder and counts */
+  /** Basic HUD showing FPS and optional perf counters */
   const fps = useFPS();
+  const [counters, setCounters] = React.useState({});
+  React.useEffect(() => {
+    if (!featureEnabled('perf-counters')) return;
+    const id = setInterval(() => setCounters(getCounters()), 500);
+    return () => clearInterval(id);
+  }, []);
   return (
     <div className="hud" aria-live="polite">
-      FPS: {fps}
+      <div>FPS: {fps}</div>
+      {featureEnabled('perf-counters') && (
+        <div style={{ marginTop: 4 }}>
+          {Object.entries(counters).map(([k, v]) => (
+            <span key={k} style={{ marginRight: 8 }}>
+              {k}: {String(v)}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

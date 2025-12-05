@@ -1,6 +1,7 @@
 import Dexie from 'dexie';
 
 let db;
+let autosaveTimer = null;
 
 // PUBLIC_INTERFACE
 export function initDB() {
@@ -26,9 +27,51 @@ export async function autosaveNow(design) {
 }
 
 // PUBLIC_INTERFACE
+export function autosaveDebounced(design, delayMs = 800) {
+  /** Debounced autosave wrapper to reduce IndexedDB churn while editing. */
+  if (autosaveTimer) clearTimeout(autosaveTimer);
+  autosaveTimer = setTimeout(() => {
+    autosaveNow(design);
+  }, delayMs);
+}
+
+// PUBLIC_INTERFACE
 export async function restoreLatest() {
   /** Restore the most recent snapshot, if any. */
   if (!db) return null;
   const latest = await db.snapshots.orderBy('ts').last();
   return latest?.data || null;
+}
+
+// PUBLIC_INTERFACE
+export async function manualBackup(design) {
+  /** Save current design to file (JSON) for manual backup. */
+  const blob = new Blob([JSON.stringify(design, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `graph-backup-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// PUBLIC_INTERFACE
+export async function manualRestore(file) {
+  /** Restore from a user-provided backup file (JSON or .gz if supported by browser). */
+  const arrayBuffer = await file.arrayBuffer();
+  let text = '';
+  if (file.name.endsWith('.gz') && 'DecompressionStream' in window) {
+    const ds = new DecompressionStream('gzip');
+    const decompressed = await new Response(new Blob([arrayBuffer]).stream().pipeThrough(ds)).text();
+    text = decompressed;
+  } else {
+    text = new TextDecoder().decode(arrayBuffer);
+  }
+  try {
+    const obj = JSON.parse(text);
+    return obj;
+  } catch (e) {
+    console.error('Failed to parse backup:', e);
+    return null;
+  }
 }

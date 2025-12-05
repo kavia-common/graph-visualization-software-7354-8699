@@ -1,0 +1,10 @@
+{
+  "meta": { "v": 1, "name": "Sample Small" },
+  "nodes": [
+    { "id": "a", "position": { "x": 100, "y": 120 }, "data": { "label": "A" } },
+    { "id": "b", "position": { "x": 320, "y": 160 }, "data": { "label": "B" } }
+  ],
+  "edges": [
+    { "id": "e1", "source": "a", "target": "b", "label": "A->B" }
+  ]
+}

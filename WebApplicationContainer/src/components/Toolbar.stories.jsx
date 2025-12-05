@@ -18,6 +18,9 @@ export const Default = {
     onExport: () => {},
     readOnly: false,
     onToggleReadOnly: () => {},
-    onShowShortcuts: () => {}
+    onShowShortcuts: () => {},
+    busy: false,
+    onBackup: () => {},
+    onRestore: () => {},
   }
 };

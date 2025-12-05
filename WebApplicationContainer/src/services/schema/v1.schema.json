@@ -23,6 +23,7 @@
         "properties": {
           "id": { "type": "string" },
           "type": { "type": "string" },
+          "group": { "type": "string", "description": "Optional group id this node belongs to" },
           "position": {
             "type": "object",
             "required": ["x", "y"],
@@ -32,7 +33,8 @@
             "type": "object",
             "properties": {
               "label": { "type": "string" },
-              "collapsed": { "type": "boolean" }
+              "collapsed": { "type": "boolean", "description": "Node-local collapsed flag" },
+              "groupCollapsed": { "type": "boolean", "description": "If node is a group, whether it's collapsed" }
             },
             "additionalProperties": true
           }
