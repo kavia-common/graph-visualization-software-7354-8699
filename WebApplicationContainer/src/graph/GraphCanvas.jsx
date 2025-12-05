@@ -16,7 +16,10 @@ import {
   canContain,
   isAllowedAtTopLevel,
   canAddChildWithCaps,
+  getLayoutConfigFor,
+  isAutoResizingContainer,
 } from '../services/schema/containmentRules';
+import { updateNode as apiUpdateNode } from '../services/api';
 
 // PUBLIC_INTERFACE
 export default function GraphCanvas({ onContextMenu }) {
@@ -41,9 +44,183 @@ export default function GraphCanvas({ onContextMenu }) {
   const [rfEdges, rfSetEdges, onEdgesChange] = useEdgesState(edges);
 
   const containerRef = useRef(null);
+  const dragDebounceRef = useRef(null);
 
   React.useEffect(() => rfSetNodes(nodes), [nodes, rfSetNodes]);
   React.useEffect(() => rfSetEdges(edges), [edges, rfSetEdges]);
+
+  // Compute children of a given parentId from current store nodes
+  const getChildrenOf = useCallback(
+    (parentId) => {
+      if (!parentId) return [];
+      return (useGraphStore.getState().nodes || []).filter(
+        (n) => (n.data?.parentId || null) === parentId
+      );
+    },
+    []
+  );
+
+  // Find a node by id from store
+  const findNode = useCallback((id) => {
+    return (useGraphStore.getState().nodes || []).find((n) => n.id === id) || null;
+  }, []);
+
+  // Compute bbox of given children (positions relative to parent)
+  function computeChildrenBBox(children) {
+    if (!children || children.length === 0) return null;
+    let minX = Infinity,
+      minY = Infinity,
+      maxX = -Infinity,
+      maxY = -Infinity;
+    for (const c of children) {
+      const cx = c.position?.x || 0;
+      const cy = c.position?.y || 0;
+      // Sizes: if explicit width/height not tracked, assume 100x60 as heuristic node size
+      const w = Number(c.width) || Number(c.data?.width) || 100;
+      const h = Number(c.height) || Number(c.data?.height) || 60;
+      minX = Math.min(minX, cx);
+      minY = Math.min(minY, cy);
+      maxX = Math.max(maxX, cx + w);
+      maxY = Math.max(maxY, cy + h);
+    }
+    return { x: minX, y: minY, width: Math.max(0, maxX - minX), height: Math.max(0, maxY - minY) };
+    // Note: children coords considered relative to parent (as we store them when dropped)
+  }
+
+  // PUBLIC_INTERFACE
+  async function recomputeParentBounds(parentId, visited = new Set()) {
+    /**
+     * Recompute a parent container bounds to fit all its children with padding and min constraints.
+     * Propagates upwards if the parent's size/pos changes.
+     */
+    if (!parentId || visited.has(parentId)) return;
+    visited.add(parentId);
+    const storeNodes = useGraphStore.getState().nodes || [];
+    const parent = storeNodes.find((n) => n.id === parentId);
+    if (!parent) return;
+
+    const domainType =
+      parent.data?.domainType || parent.data?.type || parent.type || 'default';
+    if (!isAutoResizingContainer(domainType)) {
+      // Still propagate upward in case ancestor needs to fit this parent
+      if (parent.data?.parentId) {
+        await recomputeParentBounds(parent.data.parentId, visited);
+      }
+      return;
+    }
+
+    const cfg = getLayoutConfigFor(domainType);
+    const padding = Number(cfg.padding) || 0;
+    const minW = Number(cfg.minWidth) || 0;
+    const minH = Number(cfg.minHeight) || 0;
+    const EPS = 1; // guard epsilon
+
+    const children = getChildrenOf(parentId);
+    if (!children.length) {
+      // ensure minimum size when empty
+      const curW = Number(parent.width) || Number(parent.data?.width) || minW;
+      const curH = Number(parent.height) || Number(parent.data?.height) || minH;
+      if (curW < minW - EPS || curH < minH - EPS) {
+        const patch = { width: minW, height: minH };
+        await applyParentPatch(parent, patch);
+        if (parent.data?.parentId) {
+          await recomputeParentBounds(parent.data.parentId, visited);
+        }
+      }
+      return;
+    }
+
+    const bbox = computeChildrenBBox(children);
+    // desired outer width/height = bbox + 2*padding
+    const desiredW = Math.max(minW, bbox.width + padding * 2);
+    const desiredH = Math.max(minH, bbox.height + padding * 2);
+
+    // inner origin ideally at padding offset
+    // ensure children remain stable relative to parent; we only change parent position if children min is < padding
+    const needShiftX = bbox.x < padding - EPS;
+    const needShiftY = bbox.y < padding - EPS;
+
+    // compute new parent position to keep children stable (children are stored relative)
+    let newParentX = parent.position?.x || 0;
+    let newParentY = parent.position?.y || 0;
+
+    // If children min is negative relative to desired padding, we move parent in canvas space by the overflow
+    if (needShiftX) {
+      const delta = padding - bbox.x;
+      newParentX = newParentX - delta;
+    }
+    if (needShiftY) {
+      const delta = padding - bbox.y;
+      newParentY = newParentY - delta;
+    }
+
+    const curW = Number(parent.width) || Number(parent.data?.width) || 0;
+    const curH = Number(parent.height) || Number(parent.data?.height) || 0;
+    const curX = parent.position?.x || 0;
+    const curY = parent.position?.y || 0;
+
+    const sizeChanged = Math.abs(desiredW - curW) > EPS || Math.abs(desiredH - curH) > EPS;
+    const posChanged = Math.abs(newParentX - curX) > EPS || Math.abs(newParentY - curY) > EPS;
+
+    if (!sizeChanged && !posChanged) {
+      // No change; bubble up check still for safety
+      if (parent.data?.parentId) {
+        await recomputeParentBounds(parent.data.parentId, visited);
+      }
+      return;
+    }
+
+    await applyParentPatch(parent, {
+      width: desiredW,
+      height: desiredH,
+      position: { x: newParentX, y: newParentY },
+    });
+
+    // Propagate up the chain
+    if (parent.data?.parentId) {
+      await recomputeParentBounds(parent.data.parentId, visited);
+    }
+  }
+
+  // Apply patch: update store optimistically and persist via API with rollback on failure
+  async function applyParentPatch(parent, patch) {
+    // Update local store nodes
+    const parentId = parent.id;
+    const nextPatch = { ...patch };
+    // flatten position
+    if (nextPatch.position) {
+      const { x, y } = nextPatch.position;
+      delete nextPatch.position;
+      useGraphStore.setState((s) => ({
+        nodes: s.nodes.map((n) =>
+          n.id === parentId ? { ...n, position: { x, y }, width: nextPatch.width ?? n.width, height: nextPatch.height ?? n.height, data: { ...(n.data || {}), width: nextPatch.width ?? n.data?.width, height: nextPatch.height ?? n.data?.height } } : n
+        ),
+      }));
+    } else {
+      useGraphStore.setState((s) => ({
+        nodes: s.nodes.map((n) =>
+          n.id === parentId ? { ...n, width: nextPatch.width ?? n.width, height: nextPatch.height ?? n.height, data: { ...(n.data || {}), width: nextPatch.width ?? n.data?.width, height: nextPatch.height ?? n.data?.height } } : n
+        ),
+      }));
+    }
+
+    // Persist if possible
+    try {
+      await apiUpdateNode(parentId, {
+        width: nextPatch.width,
+        height: nextPatch.height,
+        position: nextPatch.position ? { ...nextPatch.position } : undefined,
+      });
+    } catch (err) {
+      // Rollback minimal: we won't know previous values easily; fetch from current and revert using saved prev
+      // For simplicity, if backend fails (non-network), we will toast and keep local (optimistic)
+      if (err && !err.isNetwork && err.status !== 404) {
+        toast('Failed to save container resize; keeping local change.', 'warn');
+      } else {
+        // network issues: silently keep local change
+      }
+    }
+  }
 
   const onConnect = useCallback(
     async (params) => {
@@ -243,6 +420,12 @@ export default function GraphCanvas({ onContextMenu }) {
       // optimistic add
       setNodes((nds) => [...nds, newNode]);
 
+      // After creating child, recompute its parent bounds bottom-up
+      if (parentId) {
+        // allow the new node to exist in store before recompute
+        setTimeout(() => recomputeParentBounds(parentId), 0);
+      }
+
       try {
         await apiCreateNode({
           id,
@@ -316,6 +499,25 @@ export default function GraphCanvas({ onContextMenu }) {
           if (readOnly) return;
           onNodesChange(changes);
           setNodes((nds) => nds);
+
+          // Collect parents of moved/resized nodes to recompute
+          const parentsToCheck = new Set();
+          for (const ch of changes || []) {
+            if (ch.type === 'position' || ch.type === 'dimensions') {
+              const n = useGraphStore.getState().nodes.find((x) => x.id === ch.id);
+              const pid = n?.data?.parentId || null;
+              if (pid) parentsToCheck.add(pid);
+            }
+          }
+          if (parentsToCheck.size > 0) {
+            // Debounce during drag
+            if (dragDebounceRef.current) window.clearTimeout(dragDebounceRef.current);
+            dragDebounceRef.current = window.setTimeout(() => {
+              parentsToCheck.forEach((pid) => {
+                recomputeParentBounds(pid);
+              });
+            }, 120);
+          }
         }}
         onEdgesChange={(changes) => {
           if (readOnly) return;
@@ -324,6 +526,13 @@ export default function GraphCanvas({ onContextMenu }) {
         }}
         onConnect={onConnect}
         onSelectionChange={onSelectionChange}
+        onNodeDragStop={(_, node) => {
+          if (readOnly) return;
+          const pid = node?.data?.parentId || null;
+          if (pid) {
+            recomputeParentBounds(pid);
+          }
+        }}
         nodesDraggable={!readOnly}
         nodesConnectable={!readOnly}
         elementsSelectable

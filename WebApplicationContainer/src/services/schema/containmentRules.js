@@ -30,7 +30,9 @@
 export const DEVICE_TYPES = ['router', 'switch'];
 
 // The canonical allowed children mapping: parentType -> array of allowed child types
-// PUBLIC_INTERFACE
+/**
+ * Mapping of allowed children for each parent type.
+ */
 export const ALLOWED_CHILDREN = {
   site: ['building'],
   building: ['room'],
@@ -42,6 +44,26 @@ export const ALLOWED_CHILDREN = {
   interface: [],
   port: [],
 };
+
+/**
+ * Layout config per container type to support autoresize behavior
+ * minWidth/minHeight are inner-content minimums; padding expands outer bounds.
+ */
+export const LAYOUT_CONFIG = {
+  site: { minWidth: 300, minHeight: 220, padding: 16, autoresize: true },
+  building: { minWidth: 260, minHeight: 200, padding: 16, autoresize: true },
+  room: { minWidth: 220, minHeight: 180, padding: 16, autoresize: true },
+  rack: { minWidth: 160, minHeight: 160, padding: 12, autoresize: true },
+  // Non-container or leaf types default
+  default: { minWidth: 140, minHeight: 120, padding: 8, autoresize: false },
+};
+
+// PUBLIC_INTERFACE
+export function getLayoutConfigFor(type) {
+  /** Returns layout config for the given domain type. */
+  const t = type || 'default';
+  return LAYOUT_CONFIG[t] || LAYOUT_CONFIG.default;
+}
 
 // Types allowed to be created at top-level (no parentId provided).
 // PUBLIC_INTERFACE
@@ -161,4 +183,11 @@ export function canAddChildWithCaps(parentNode, childType, siblings = []) {
   }
 
   return { ok: true };
+}
+
+// PUBLIC_INTERFACE
+export function isAutoResizingContainer(type) {
+  /** True if this type has autoresize behavior enabled in layout config. */
+  const cfg = getLayoutConfigFor(type);
+  return !!cfg?.autoresize;
 }

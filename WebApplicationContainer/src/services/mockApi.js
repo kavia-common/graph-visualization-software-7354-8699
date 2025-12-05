@@ -288,6 +288,10 @@ export async function updateNode(id, patch) {
   const updated = {
     ...existing,
     ...patch,
+    // Keep position/size explicitly if provided
+    position: patch?.position ? { ...(patch.position || {}) } : existing.position,
+    width: typeof patch?.width !== 'undefined' ? patch.width : existing.width,
+    height: typeof patch?.height !== 'undefined' ? patch.height : existing.height,
     props: { ...(existing.props || {}), ...(patch?.props || {}) },
   };
   memory.nodes.set(id, updated);

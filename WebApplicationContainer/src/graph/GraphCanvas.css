@@ -5,3 +5,14 @@
   background-position: 0 0, 25px 25px;
   background-size: 50px 50px;
 }
+
+/* Subtle animated resize for container-like nodes (applied via RF styles) */
+.react-flow__node {
+  transition: width 120ms ease, height 120ms ease, transform 120ms ease;
+  will-change: width, height, transform;
+  z-index: 1;
+}
+.react-flow__node.selected {
+  z-index: 2;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.5);
+}
