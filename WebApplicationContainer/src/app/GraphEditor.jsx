@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import GraphCanvas from '../graph/GraphCanvas';
 import Toolbar from '../components/Toolbar';
 import ContextMenu from '../components/ContextMenu';
 import HUD from '../components/HUD';
@@ -11,12 +10,13 @@ import { PluginRegistryProvider } from '../plugins/registry';
 import ShortcutsOverlay from '../components/ShortcutsOverlay';
 import { experiments, featureEnabled } from '../perf/metrics';
 import { createModuleWorker } from '../workers/createWorker';
+import EditorShell from './EditorShell';
 
 // PUBLIC_INTERFACE
 export default function GraphEditor() {
   /**
-   * GraphEditor shell: holds toolbar, canvas, context menu, HUD, and manages
-   * read-only toggle, import/export, and autosave/session-restore.
+   * GraphEditor shell: holds toolbar, canvas (now via EditorShell), context menu, HUD,
+   * and manages read-only toggle, import/export, and autosave/session-restore.
    */
   const {
     nodes,
@@ -149,7 +149,8 @@ export default function GraphEditor() {
           }, [setGraph])}
         />
         <div className="canvas-container" onContextMenu={(e) => e.preventDefault()}>
-          <GraphCanvas onContextMenu={onContextMenu} />
+          {/* Use new layout shell containing palette, canvas and properties panel */}
+          <EditorShell />
           {contextMenu && (
             <ContextMenu x={contextMenu.x} y={contextMenu.y} onClose={closeContext}>
               {menuContent}

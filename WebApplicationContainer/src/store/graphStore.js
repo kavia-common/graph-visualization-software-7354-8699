@@ -15,6 +15,7 @@ export const useGraphStore = create((set, get) => ({
   nodes: [],
   edges: [],
   selection: [],
+  selectedId: null,
   readOnly: false,
   customNodeTypes: {},
   customEdgeTypes: {},
@@ -38,7 +39,10 @@ export const useGraphStore = create((set, get) => ({
   setReadOnly: (ro) => set({ readOnly: !!ro }),
 
   // PUBLIC_INTERFACE
-  setSelection: (sel) => set({ selection: sel }),
+  setSelection: (sel) => set({ selection: sel, selectedId: sel && sel.length === 1 ? sel[0] : null }),
+
+  // PUBLIC_INTERFACE
+  setSelected: (id) => set({ selectedId: id, selection: id ? [id] : [] }),
 
   // PUBLIC_INTERFACE
   addNode: () =>
@@ -55,6 +59,24 @@ export const useGraphStore = create((set, get) => ({
     })),
 
   // PUBLIC_INTERFACE
+  updateNode: (nodeId, patch) =>
+    set((state) => ({
+      nodes: state.nodes.map((n) =>
+        n.id === nodeId
+          ? {
+              ...n,
+              data: { ...(n.data || {}), ...(patch.label ? { label: patch.label } : {} ) },
+              type: patch.type || n.type,
+              props: { ...(n.props || {}), ...(patch.props || {}) },
+            }
+          : n
+      ),
+    })),
+
+  // PUBLIC_INTERFACE
+  addEdge: (edge) => set((state) => ({ edges: [...state.edges, edge] })),
+
+  // PUBLIC_INTERFACE
   removeSelected: () =>
     set((state) => {
       const sel = new Set(state.selection);
@@ -62,6 +84,7 @@ export const useGraphStore = create((set, get) => ({
         nodes: state.nodes.filter((n) => !sel.has(n.id)),
         edges: state.edges.filter((e) => !sel.has(e.id)),
         selection: [],
+        selectedId: null,
       };
     }),
 

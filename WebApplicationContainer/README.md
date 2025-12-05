@@ -2,6 +2,23 @@
 
 This project provides a minimal React template with a clean, modern UI and minimal dependencies.
 
+## Graph Editor Backend Integration
+
+- Left palette sidebar is fetched from backend using REACT_APP_BACKEND_URL at GET /palette; falls back to local-only palette if backend is missing/unavailable.
+- Nodes created by drag-and-drop are optimistically added and persisted via POST /nodes.
+- Edges created by connecting nodes are optimistically added and persisted via POST /edges.
+- Right-side properties panel allows editing node fields and saves via PATCH /nodes/:id (optimistic with rollback on failure).
+
+Environment:
+
+Set REACT_APP_BACKEND_URL in a .env file at build time (or use .env.example):
+
+```
+REACT_APP_BACKEND_URL=https://your-backend.example.com
+```
+
+If not set or the backend is down, the app continues in local-only mode and shows a non-blocking toast.
+
 ## Features
 
 - **Lightweight**: No heavy UI frameworks - uses only vanilla CSS and React
