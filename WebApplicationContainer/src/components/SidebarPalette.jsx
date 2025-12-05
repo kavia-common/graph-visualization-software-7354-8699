@@ -43,7 +43,18 @@ export default function SidebarPalette() {
   }, []);
 
   const onDragStart = (e, item) => {
-    e.dataTransfer.setData('application/x-graph-item', JSON.stringify(item));
+    // Drag payload includes type, label, imageUrl, defaults for consumers.
+    const payload = {
+      type: item.type,
+      label: item.label,
+      imageUrl: item.imageUrl,
+      defaults: item.defaults || {},
+      meta: item.meta || {},
+      // maintain backward-compatible fields
+      icon: item.icon,
+      id: item.id,
+    };
+    e.dataTransfer.setData('application/x-graph-item', JSON.stringify(payload));
     e.dataTransfer.effectAllowed = 'copy';
   };
 
@@ -84,7 +95,19 @@ export default function SidebarPalette() {
             }}
             title={`Drag to canvas to create a ${it.label || it.type}`}
           >
-            <span aria-hidden style={{ fontSize: 18 }}>{iconFor(it.type)}</span>
+            {it.imageUrl ? (
+              <img
+                src={it.imageUrl}
+                alt=""
+                aria-hidden
+                style={{ width: 20, height: 20, objectFit: 'contain' }}
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                }}
+              />
+            ) : (
+              <span aria-hidden style={{ fontSize: 18 }}>{iconFor(it.type)}</span>
+            )}
             <span style={{ fontSize: 14 }}>{it.label || it.type}</span>
           </div>
         ))}

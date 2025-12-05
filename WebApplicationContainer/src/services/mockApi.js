@@ -24,24 +24,125 @@ const memory = {
   counters: { n: 0, e: 0 },
 };
 
-// Seed palette
+/**
+ * Seeded palette for mock mode.
+ * Each item includes:
+ * - id, type, label
+ * - imageUrl: placeholder icon in /assets
+ * - defaults: suggested default props (e.g., suggestedIndex)
+ * - meta: arbitrary type metadata
+ *
+ * Backward compatibility: retain 'icon' where it existed.
+ */
 const seededPalette = [
   // Top-level
-  { id: 'site', type: 'site', label: 'Site', icon: 'office' },
+  {
+    id: 'site',
+    type: 'site',
+    label: 'Site',
+    icon: 'office',
+    imageUrl: '/assets/site.png',
+    meta: { category: 'location' },
+    defaults: {},
+  },
+
   // Hierarchy
-  { id: 'building', type: 'building', label: 'Building', icon: 'office' },
-  { id: 'room', type: 'room', label: 'Room', icon: 'door' },
-  { id: 'rack', type: 'rack', label: 'Rack', icon: 'server' },
-  { id: 'rackPosition', type: 'rackPosition', label: 'Rack Position', icon: 'hash' },
-  { id: 'slot', type: 'slot', label: 'Slot', icon: 'hash' },
-  // Devices
-  { id: 'router', type: 'router', label: 'Router', icon: 'router' },
-  { id: 'switch', type: 'switch', label: 'Switch', icon: 'switch' },
+  {
+    id: 'building',
+    type: 'building',
+    label: 'Building',
+    icon: 'office',
+    imageUrl: '/assets/building.png',
+    meta: { category: 'location' },
+    defaults: {},
+  },
+  {
+    id: 'room',
+    type: 'room',
+    label: 'Room',
+    icon: 'door',
+    imageUrl: '/assets/room.png',
+    meta: { category: 'location' },
+    defaults: {},
+  },
+  {
+    id: 'rack',
+    type: 'rack',
+    label: 'Rack',
+    icon: 'server',
+    imageUrl: '/assets/rack.png',
+    meta: { category: 'infrastructure' },
+    defaults: { heightU: 42 },
+  },
+  {
+    id: 'rackPosition',
+    type: 'rackPosition',
+    label: 'Rack Position',
+    icon: 'hash',
+    imageUrl: '/assets/rackPosition.png',
+    meta: { category: 'infrastructure', indexRange: [1, 42] },
+    defaults: { suggestedIndex: 1 },
+  },
+  {
+    id: 'slot',
+    type: 'slot',
+    label: 'Slot',
+    icon: 'hash',
+    imageUrl: '/assets/slot.png',
+    meta: { category: 'infrastructure', indexRange: [1, 16] },
+    defaults: { suggestedIndex: 1 },
+  },
+
+  // Devices (device variants)
+  {
+    id: 'router',
+    type: 'router',
+    label: 'Router',
+    icon: 'router',
+    imageUrl: '/assets/router.png',
+    meta: { category: 'device', deviceClass: 'router' },
+    defaults: { vendor: 'Generic', model: 'R-1000' },
+  },
+  {
+    id: 'switch',
+    type: 'switch',
+    label: 'Switch',
+    icon: 'switch',
+    imageUrl: '/assets/switch.png',
+    meta: { category: 'device', deviceClass: 'switch' },
+    defaults: { vendor: 'Generic', model: 'S-48P' },
+  },
+
   // Device children
-  { id: 'interface', type: 'interface', label: 'Interface', icon: 'plug' },
-  { id: 'port', type: 'port', label: 'Port', icon: 'plug' },
-  // Tools
-  { id: 'link', type: 'link', label: 'Link', icon: 'link' },
+  {
+    id: 'interface',
+    type: 'interface',
+    label: 'Interface',
+    icon: 'plug',
+    imageUrl: '/assets/interface.png',
+    meta: { category: 'device-io' },
+    defaults: { name: 'ge-0/0/0' },
+  },
+  {
+    id: 'port',
+    type: 'port',
+    label: 'Port',
+    icon: 'plug',
+    imageUrl: '/assets/port.png',
+    meta: { category: 'device-io' },
+    defaults: { name: 'port-1' },
+  },
+
+  // Tools (kept for backward compatibility)
+  {
+    id: 'link',
+    type: 'link',
+    label: 'Link',
+    icon: 'link',
+    imageUrl: '/assets/link.png',
+    meta: { category: 'tool' },
+    defaults: {},
+  },
 ];
 
 // Utility delay + error simulation
@@ -162,7 +263,11 @@ export async function createNode(payload) {
   }
 
   const id = payload.id || nextNodeId();
-  const node = { id, ...payload };
+  const props = { ...(payload.props || {}) };
+  if (typeof props.suggestedIndex !== 'undefined' && typeof props.index === 'undefined') {
+    props.index = props.suggestedIndex;
+  }
+  const node = { id, ...payload, props };
   memory.nodes.set(id, node);
   return node;
 }

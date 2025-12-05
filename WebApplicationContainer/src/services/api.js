@@ -88,20 +88,54 @@ export async function fetchPalette() {
   }
   try {
     const data = await request('/palette');
-    if (Array.isArray(data)) return data;
-    // fallback if backend responds with unexpected shape
-    return [
-      { type: 'router', label: 'Router' },
-      { type: 'switch', label: 'Switch' },
-      { type: 'host', label: 'Host' },
+    const fromBackend = Array.isArray(data) ? data : [];
+    // Core required palette to guarantee presence of hierarchical items
+    const core = [
+      { id: 'site', type: 'site', label: 'Site', imageUrl: '/assets/site.png' },
+      { id: 'building', type: 'building', label: 'Building', imageUrl: '/assets/building.png' },
+      { id: 'room', type: 'room', label: 'Room', imageUrl: '/assets/room.png' },
+      { id: 'rack', type: 'rack', label: 'Rack', imageUrl: '/assets/rack.png' },
+      {
+        id: 'rackPosition',
+        type: 'rackPosition',
+        label: 'Rack Position',
+        imageUrl: '/assets/rackPosition.png',
+        defaults: { suggestedIndex: 1 },
+      },
+      {
+        id: 'slot',
+        type: 'slot',
+        label: 'Slot',
+        imageUrl: '/assets/slot.png',
+        defaults: { suggestedIndex: 1 },
+      },
+      { id: 'router', type: 'router', label: 'Router', imageUrl: '/assets/router.png' },
+      { id: 'switch', type: 'switch', label: 'Switch', imageUrl: '/assets/switch.png' },
+      { id: 'interface', type: 'interface', label: 'Interface', imageUrl: '/assets/interface.png' },
+      { id: 'port', type: 'port', label: 'Port', imageUrl: '/assets/port.png' },
     ];
+    // Merge by type: backend items can override, but ensure all core types present
+    const byType = new Map();
+    [...fromBackend, ...core].forEach((it) => {
+      if (!it || !it.type) return;
+      byType.set(it.type, { ...it });
+    });
+    const merged = Array.from(byType.values());
+    return merged.length ? merged : core;
   } catch (e) {
-    // Fallback local palette
+    // Fallback to a guaranteed complete local palette
     return [
-      { type: 'router', label: 'Router' },
-      { type: 'switch', label: 'Switch' },
-      { type: 'host', label: 'Host' },
-      { type: 'link', label: 'Link Tool' },
+      { id: 'site', type: 'site', label: 'Site', imageUrl: '/assets/site.png' },
+      { id: 'building', type: 'building', label: 'Building', imageUrl: '/assets/building.png' },
+      { id: 'room', type: 'room', label: 'Room', imageUrl: '/assets/room.png' },
+      { id: 'rack', type: 'rack', label: 'Rack', imageUrl: '/assets/rack.png' },
+      { id: 'rackPosition', type: 'rackPosition', label: 'Rack Position', imageUrl: '/assets/rackPosition.png', defaults: { suggestedIndex: 1 } },
+      { id: 'slot', type: 'slot', label: 'Slot', imageUrl: '/assets/slot.png', defaults: { suggestedIndex: 1 } },
+      { id: 'router', type: 'router', label: 'Router', imageUrl: '/assets/router.png' },
+      { id: 'switch', type: 'switch', label: 'Switch', imageUrl: '/assets/switch.png' },
+      { id: 'interface', type: 'interface', label: 'Interface', imageUrl: '/assets/interface.png' },
+      { id: 'port', type: 'port', label: 'Port', imageUrl: '/assets/port.png' },
+      { id: 'link', type: 'link', label: 'Link Tool', imageUrl: '/assets/link.png' },
     ];
   }
 }

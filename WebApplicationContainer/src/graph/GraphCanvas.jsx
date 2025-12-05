@@ -170,6 +170,13 @@ export default function GraphCanvas({ onContextMenu }) {
       }
 
       const id = `n_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+      // Merge any default props from the palette item
+      const defaultProps = (item && item.defaults) || {};
+      // Map suggestedIndex to props.index for known indexed types
+      let extraProps = {};
+      if (typeof defaultProps.suggestedIndex !== 'undefined') {
+        extraProps.index = defaultProps.suggestedIndex;
+      }
       const newNode = {
         id,
         position: pos,
@@ -178,6 +185,8 @@ export default function GraphCanvas({ onContextMenu }) {
           type: item.type,
           domainType: item.type, // surface domain type on data for parentType inference later
           parentId: parentId || null,
+          imageUrl: item.imageUrl,
+          props: { ...defaultProps, ...extraProps },
         },
         type: 'default',
       };
@@ -192,7 +201,9 @@ export default function GraphCanvas({ onContextMenu }) {
           label: item.label || item.type,
           position: pos,
           parentId: parentId || null,
-          props: {},
+          props: { ...defaultProps, ...extraProps },
+          imageUrl: item.imageUrl,
+          meta: item.meta || {},
         });
       } catch (err) {
         if (err && !err.isNetwork && err.status !== 404) {
