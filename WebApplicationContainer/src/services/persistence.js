@@ -4,6 +4,15 @@ let db;
 let autosaveTimer = null;
 
 // PUBLIC_INTERFACE
+export function __testOnly_clearAutosaveTimer() {
+  /** Clears pending autosave timer; intended for Jest cleanup. */
+  if (autosaveTimer) {
+    clearTimeout(autosaveTimer);
+    autosaveTimer = null;
+  }
+}
+
+// PUBLIC_INTERFACE
 export function initDB() {
   /** Initialize Dexie DB for autosave snapshots. */
   db = new Dexie('graph_editor_db');
@@ -31,7 +40,16 @@ export function autosaveDebounced(design, delayMs = 800) {
   /** Debounced autosave wrapper to reduce IndexedDB churn while editing. */
   if (autosaveTimer) clearTimeout(autosaveTimer);
   autosaveTimer = setTimeout(() => {
-    autosaveNow(design);
+    const p = autosaveNow(design);
+    // Ensure no unhandled rejections in tests
+    if (p && typeof p.then === 'function' && typeof p.catch === 'function') {
+      p.catch((e) => {
+        // eslint-disable-next-line no-console
+        if (process && process.env && process.env.NODE_ENV === 'test') {
+          console.error('[autosave:catch]', e?.stack || e?.message || e);
+        }
+      });
+    }
   }, delayMs);
 }
 

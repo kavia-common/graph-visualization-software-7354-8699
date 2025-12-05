@@ -25,7 +25,10 @@ export function mark(name) {
   /** Add a performance mark if available. */
   if (!featureEnabled('perf-marks')) return;
   try {
-    performance.mark(name);
+    const r = performance.mark(name);
+    if (r && typeof r.then === 'function' && typeof r.catch === 'function') {
+      r.catch(() => {});
+    }
   } catch {}
 }
 
@@ -34,8 +37,15 @@ export function measure(name, startMark, endMark) {
   /** Add a performance measure if available. */
   if (!featureEnabled('perf-marks')) return;
   try {
-    if (endMark) performance.mark(endMark);
-    performance.measure(name, startMark, endMark);
+    let r1;
+    if (endMark) r1 = performance.mark(endMark);
+    const r2 = performance.measure(name, startMark, endMark);
+    const maybe = [r1, r2].filter(Boolean);
+    maybe.forEach((m) => {
+      if (m && typeof m.then === 'function' && typeof m.catch === 'function') {
+        m.catch(() => {});
+      }
+    });
   } catch {}
 }
 

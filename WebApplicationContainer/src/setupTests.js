@@ -30,14 +30,40 @@ export function _logUnhandled(reason, origin = 'unknown') {
 if (!alreadyBound) {
   alreadyBound = true;
 
+  const normalizeToError = (reason) => {
+    // Convert any non-Error reason to an Error with JSON/string details
+    if (reason instanceof Error) return reason;
+    try {
+      const msg =
+        typeof reason === 'string'
+          ? reason
+          : JSON.stringify(reason, (_k, v) => (typeof v === 'bigint' ? v.toString() : v));
+      return new Error(msg);
+    } catch {
+      return new Error(String(reason));
+    }
+  };
+
   // Install process-level handlers. We log and prevent crashing the process.
   if (typeof process !== 'undefined' && process && typeof process.on === 'function') {
     process.on('unhandledRejection', (reason) => {
-      _logUnhandled(reason, 'unhandledRejection');
+      const err = normalizeToError(reason);
+      // Ensure stack exists for better CI logs
+      if (!err.stack) {
+        try {
+          // create a stack lazily
+          throw err;
+        } catch (e) {
+          // eslint-disable-next-line no-console
+          console.error('[test:stack]', e.stack || e);
+        }
+      }
+      _logUnhandled(err, 'unhandledRejection');
       // Prevent Node crash in Jest; tests should assert specific promise rejections explicitly.
     });
     process.on('uncaughtException', (error) => {
-      _logUnhandled(error, 'uncaughtException');
+      const err = normalizeToError(error);
+      _logUnhandled(err, 'uncaughtException');
       // Prevent crash; failing tests can still throw within their own scope.
     });
   }
@@ -46,11 +72,13 @@ if (!alreadyBound) {
   if (typeof window !== 'undefined' && window && window.addEventListener) {
     window.addEventListener('unhandledrejection', (event) => {
       try { event?.preventDefault?.(); } catch (_) {}
-      _logUnhandled(event?.reason, 'window.unhandledrejection');
+      const err = normalizeToError(event?.reason);
+      _logUnhandled(err, 'window.unhandledrejection');
     });
     window.addEventListener('error', (event) => {
       try { event?.preventDefault?.(); } catch (_) {}
-      _logUnhandled(event?.error || event?.message, 'window.error');
+      const err = normalizeToError(event?.error || event?.message);
+      _logUnhandled(err, 'window.error');
     });
   }
 }
@@ -82,6 +110,17 @@ afterEach(() => {
       if (typeof jest.clearAllTimers === 'function') jest.clearAllTimers();
       if (typeof jest.clearAllMocks === 'function') jest.clearAllMocks();
       if (typeof jest.useRealTimers === 'function') jest.useRealTimers();
+    }
+    // try to clear autosave timer if persistence module is imported
+    try {
+      // dynamic import to avoid side-effects when not needed
+      // eslint-disable-next-line global-require
+      const persistence = require('./services/persistence.js');
+      if (persistence && typeof persistence.__testOnly_clearAutosaveTimer === 'function') {
+        persistence.__testOnly_clearAutosaveTimer();
+      }
+    } catch (_) {
+      // ignore if module not loaded
     }
   } catch (e) {
     // eslint-disable-next-line no-console
