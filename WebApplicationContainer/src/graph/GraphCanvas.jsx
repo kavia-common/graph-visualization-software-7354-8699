@@ -111,34 +111,69 @@ export default function GraphCanvas({ onContextMenu }) {
         y: event.clientY - (bounds?.top ?? 0),
       };
 
-      // Try to infer a parent from current selection (if exactly one node selected)
-      // In a more advanced UI we would perform hit-testing; for now we use selection as the intended parent.
+      // Normalize child type for robust validation
+      const childTypeRaw = item.type;
+      const childType = typeof childTypeRaw === 'string' ? childTypeRaw.toLowerCase() : childTypeRaw;
+
+      // Helper to normalize any parent type-like value
+      const norm = (t) => (typeof t === 'string' ? t.toLowerCase() : t);
+
+      // Hit-testing: prefer the deepest valid parent under the pointer.
+      // We approximate by checking RF nodes whose rendered rectangle contains the drop point.
+      // React Flow stores node position; our rfNodes carry position only. We don't have width/height,
+      // so we approximate containment by preferring a currently selected parent first (if single and valid),
+      // else use the top-most node whose label box likely surrounds the point (fallback: any node).
+      // To make this deterministic, we check selection first, then scan nodes by last rendered order (rfNodes as-is),
+      // and pick the first that canContain(child).
       let parentId = null;
       let parentType = null;
+
+      // Try selection preference if exactly one node is selected
       try {
         const selectedNodeIds = selection.filter((sid) => rfNodes.some((n) => n.id === sid));
         if (selectedNodeIds.length === 1) {
-          parentId = selectedNodeIds[0];
-          const parent = rfNodes.find((n) => n.id === parentId);
-          // Parent type information lives in domain node (not ReactFlow node). We carry only visual node here.
-          // For now, allow consumers to store domain type on data.domainType if present.
-          parentType = parent?.data?.domainType || parent?.data?.type || parent?.type || null;
-          // Fallback to label-based type if needed; in production, nodes should carry a domain type field.
-          if (typeof parentType !== 'string') parentType = null;
+          const sid = selectedNodeIds[0];
+          const parent = rfNodes.find((n) => n.id === sid);
+          const pType = norm(parent?.data?.domainType || parent?.data?.type || parent?.type || null);
+          if (pType && canContain(pType, childType)) {
+            parentId = sid;
+            parentType = pType;
+          }
         }
       } catch {
-        // ignore inference errors
+        // ignore selection inference errors
       }
 
-      const childType = item.type;
+      // If no valid selection parent, try a simple spatial heuristic:
+      // find any node whose visual area plausibly includes the pointer.
+      // Since we don't track width/height, we use a radius around the node position.
+      if (!parentId) {
+        const HOVER_RADIUS = 80; // px heuristic
+        // Check nodes in reverse order to prefer the visually top-most (assuming later entries render on top)
+        const candidates = [...rfNodes].reverse().filter((n) => {
+          const nx = n.position?.x ?? 0;
+          const ny = n.position?.y ?? 0;
+          const dx = pos.x - nx;
+          const dy = pos.y - ny;
+          const within = dx * dx + dy * dy <= HOVER_RADIUS * HOVER_RADIUS;
+          if (!within) return false;
+          const pType = norm(n?.data?.domainType || n?.data?.type || n.type || null);
+          return pType && canContain(pType, childType);
+        });
+        if (candidates.length > 0) {
+          const p = candidates[0];
+          parentId = p.id;
+          parentType = norm(p?.data?.domainType || p?.data?.type || p.type || null);
+        }
+      }
 
-      // Validate containment matrix
+      // Validate containment matrix with normalization and caps
       if (parentId) {
         if (!canContain(parentType, childType)) {
           toast(`Cannot place a ${childType} inside ${parentType}.`, 'error');
           return;
         }
-        // Enforce quantity caps for specific parent/child combos (e.g., rack)
+        // Enforce caps for specific parent/child combos (e.g., rack)
         const parentNode = rfNodes.find((n) => n.id === parentId);
         const siblingChildren = rfNodes.filter((n) => (n.data?.parentId || null) === parentId);
         const cap = canAddChildWithCaps(
@@ -151,7 +186,7 @@ export default function GraphCanvas({ onContextMenu }) {
           childType,
           siblingChildren.map((n) => ({
             id: n.id,
-            type: n.data?.domainType || n.data?.type || n.type,
+            type: norm(n.data?.domainType || n.data?.type || n.type),
             data: { ...n.data },
           }))
         );
@@ -160,9 +195,10 @@ export default function GraphCanvas({ onContextMenu }) {
           return;
         }
       } else {
+        // No parent determined: enforce top-level policy
         if (!isAllowedAtTopLevel(childType)) {
           toast(
-            `Cannot create ${childType} at top-level. Select a parent or create an allowed top-level type.`,
+            `Cannot create ${childType} at top-level. Drop onto a valid parent (e.g., site) or select it first.`,
             'error'
           );
           return;
@@ -177,13 +213,26 @@ export default function GraphCanvas({ onContextMenu }) {
       if (typeof defaultProps.suggestedIndex !== 'undefined') {
         extraProps.index = defaultProps.suggestedIndex;
       }
+
+      // If nested, adjust position to be relative to parent position
+      let finalPos = { ...pos };
+      if (parentId) {
+        const p = rfNodes.find((n) => n.id === parentId);
+        if (p?.position) {
+          finalPos = {
+            x: Math.max(0, pos.x - (p.position.x || 0)),
+            y: Math.max(0, pos.y - (p.position.y || 0)),
+          };
+        }
+      }
+
       const newNode = {
         id,
-        position: pos,
+        position: finalPos,
         data: {
-          label: item.label || item.type,
-          type: item.type,
-          domainType: item.type, // surface domain type on data for parentType inference later
+          label: item.label || childType,
+          type: childType,
+          domainType: childType, // surface domain type on data for parentType inference later
           parentId: parentId || null,
           imageUrl: item.imageUrl,
           props: { ...defaultProps, ...extraProps },
@@ -197,21 +246,27 @@ export default function GraphCanvas({ onContextMenu }) {
       try {
         await apiCreateNode({
           id,
-          type: item.type,
-          label: item.label || item.type,
-          position: pos,
+          type: childType,
+          label: item.label || childType,
+          position: finalPos,
           parentId: parentId || null,
           props: { ...defaultProps, ...extraProps },
           imageUrl: item.imageUrl,
           meta: item.meta || {},
         });
+        // Success toast for user feedback
+        if (parentId) {
+          toast(`Added ${childType} inside ${parentType}.`, 'success');
+        } else {
+          toast(`Added ${childType} at top-level.`, 'success');
+        }
       } catch (err) {
         if (err && !err.isNetwork && err.status !== 404) {
           const msg = err?.data?.message || 'Failed to save node to backend, rolling back.';
           toast(msg, 'error');
           setNodes((nds) => nds.filter((n) => n.id !== id));
         } else {
-          toast('Backend unavailable; working locally.', 'warn');
+          toast('Backend unavailable; keeping local-only node.', 'warn');
         }
       }
     },
